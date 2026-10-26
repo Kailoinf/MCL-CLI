@@ -79,6 +79,13 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* 全新的 `pnpm install` 会以 `ERR_PNPM_IGNORED_BUILDS`（`Ignored build scripts:
+  esbuild@0.21.5`）停下，也就是说文档里写的「怎么构建文档站」在一个干净克隆里跑不通。原因：设置之前
+  放在 package.json 的 `pnpm` 字段里，而 pnpm 10 以后直接忽略它（它自己会说「The "pnpm" field in
+  package.json is no longer read by pnpm」）；pnpm 12.14 认的名字是 `pnpm-workspace.yaml` 里的
+  `allowBuilds`，而不是更早的 `onlyBuiltDependencies`（后者会被读进配置，但不生效）。这是跑
+  `pnpm approve-builds --all` 并看它写了什么才确定的。验证方式：删掉 `node_modules` 重装（干净、
+  无报错）并构建站点（`pnpm docs:build`，13 页）。
 * 控制台闸门必须知道自己在等**哪一次运行**：`latest.log` 在新服务器轮转日志之前，仍然是上一次
   服务器的输出，于是「日志里有没有 `Done (`」这种检查会立刻答是，管道里的命令照样被过早送出 ——
   同样的两条报错，来自一个看上去没问题的闸门。现在要求日志的写入时间在这次启动之后

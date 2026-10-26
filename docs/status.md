@@ -75,6 +75,15 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* A fresh `pnpm install` stopped with `ERR_PNPM_IGNORED_BUILDS` (`Ignored build
+  scripts: esbuild@0.21.5`), so the documented way to build the docs site did not
+  work from a clean clone. The setting had been in a `pnpm` field in package.json,
+  which pnpm 10 and later ignore outright ("The \"pnpm\" field in package.json is no
+  longer read by pnpm"), and the name pnpm 12.14 wants is `allowBuilds` in
+  `pnpm-workspace.yaml` — not the older `onlyBuiltDependencies`, which pnpm reads into
+  its config but does not act on. Found by running `pnpm approve-builds --all` and
+  reading what it wrote. Verified by deleting `node_modules`, installing again (clean,
+  no error) and building the site (`pnpm docs:build`, 13 pages).
 * The console gate has to know *which* run it is waiting on: `latest.log` still holds
   the previous server's output until the new one rotates it, so asking only "is
   `Done (` in the log?" answered yes at once and the piped commands went early again

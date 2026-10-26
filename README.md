@@ -309,6 +309,11 @@ pnpm docs:dev      # http://localhost:5173, live reload
 pnpm docs:build    # static site in docs/.vitepress/dist
 ```
 
+pnpm 10 and later read their settings from `pnpm-workspace.yaml`, not from a `pnpm`
+field in package.json, and esbuild's build script has to be allowed there
+(`allowBuilds`) — without it a fresh `pnpm install` stops with
+`ERR_PNPM_IGNORED_BUILDS` and the site cannot be built.
+
 `skill/SKILL.md` is the working guide for anyone (or anything) editing mcli:
 where things live, how to verify a change without a display, and the traps that
 have already been hit. It is updated in the same commit as the feature it

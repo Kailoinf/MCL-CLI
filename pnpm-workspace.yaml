@@ -1,0 +1,12 @@
+# Settings for pnpm live here. A "pnpm" field in package.json is ignored by pnpm 10+
+# (pnpm 12.14 says so out loud), and the key is `allowBuilds`, not the older
+# `onlyBuiltDependencies` — found by running `pnpm approve-builds --all` and reading
+# what it wrote.
+#
+# esbuild has a postinstall that installs its binary. Without this, a fresh
+# `pnpm install` stops with:
+#   Error: ERR_PNPM_IGNORED_BUILDS
+#   ╰─▶ Ignored build scripts: esbuild@0.21.5
+# and the docs site cannot be built at all.
+allowBuilds:
+  esbuild: true

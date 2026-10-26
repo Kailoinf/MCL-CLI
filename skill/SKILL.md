@@ -48,6 +48,13 @@ surprised by the code, the skill is stale.
 `docs/.vitepress/dist`); `docs/status.md` is published as-is, so keep it readable
 by people, not only by agents.
 
+**pnpm settings live in `pnpm-workspace.yaml`.** pnpm 10+ ignores a `pnpm` field in
+package.json entirely, and pnpm 12.14 wants `allowBuilds:` (a map) rather than the
+older `onlyBuiltDependencies:` — the old key is read into `pnpm config list` but not
+acted on, so a fresh install still stops with `ERR_PNPM_IGNORED_BUILDS` and esbuild's
+binary is never installed. `pnpm approve-builds --all` is the way to find out what the
+installed pnpm actually wants. Verify a fix by deleting `node_modules` first.
+
 **Every page exists in both languages**: English at `docs/<page>.md`, Chinese at
 `docs/zh/<page>.md`, and the site's locale switcher lands on the pair. A change to
 one language is a change to both, in the same commit — that is AGENTS.md rule 5 and
