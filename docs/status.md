@@ -34,7 +34,14 @@ and what is left. Update it in the same commit as the work.
   as main class, `natives/{java,jna,lwjgl,netty}` referenced and created by the
   installer's extraction step, Fabric libraries from `maven.fabricmc.net` passed
   through to their own host. Exactly one library was missing on disk
-  (`netty-transport-native-epoll`), which a real install would fetch.
+  (`netty-transport-native-epoll`), which a real install would fetch. A dry run
+  reports "will download 14 files, 10.0 MiB (5202 already present)".
+* Values from a version JSON are passed through **verbatim**, including one that
+  looks wrong: this profile's `-DFabricMcEmu= net.minecraft.client.main.Main `
+  really carries a leading and a trailing space in the JSON that Fabric's
+  installer wrote. Do not "clean" argument values — a path with a space and a
+  game argument with a space both have to survive, and every other launcher
+  passes this one through as it is.
 * `launch --version <other>` points the client jar and natives at the *version's*
   directory, not the instance's (previously wrong).
 * The credential split: an old hand-written `state.toml` (v2, tokens inline) is
