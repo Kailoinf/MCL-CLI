@@ -46,7 +46,7 @@
 | 命令 | 作用 |
 | --- | --- |
 | `mcli search <关键词> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <版本>] [--loader <加载器>] [--limit N] [--offset N]` | 在 Modrinth 搜索：一次查询、一页结果 |
-| `mcli add <项目> [--instance <名称>] [--version <版本>] [--loader <加载器>] [--type <类型>] [--dry-run]` | 把项目的匹配文件装进实例 |
+| `mcli add <项目> [--instance <名称>] [--version <版本>] [--loader <加载器>] [--type <类型>] [--dry-run]` | 把项目的匹配文件装进实例；`modpack` 会从项目自身识别，并按整个整合包安装（文件清单、覆盖文件、加载器） |
 | `mcli mods [<名称>]` | 列出实例的 `mods/`、`resourcepacks/`、`shaderpacks/`、`datapacks/` |
 
 ## Java 与配置

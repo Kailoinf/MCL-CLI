@@ -89,7 +89,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli fabric list <game> [--limit N]` | the Fabric loader builds published for a game version |
 | `mcli fabric list <game> [--limit N]` | the loader builds Fabric publishes for a game version (installing is the `--loader` choice below) |
 | `mcli search <query> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <game>] [--loader <loader>] [--limit N] [--offset N]` | search Modrinth (one query, one page) |
-| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--dry-run]` | install a project's matching file into an instance |
+| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--dry-run]` | install a project's matching file into an instance; a modpack is read and installed as a pack |
 | `mcli mods [<instance>]` | what an instance already has in mods/, resourcepacks/, shaderpacks/ |
 | `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg ...] [--eula]` | register a server: its own directory, world and port; the Minecraft EULA is printed and has to be accepted |
 | `mcli server [list \| show <name> \| set <name> [--xmx] [--xms] [--port] [--java] [--version] \| delete <name> [--keep-files] [--yes]]` | inspect and change servers |

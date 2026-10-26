@@ -85,6 +85,8 @@ doctor found; both read `mcv.Plan`, so they cannot disagree), `server_cmd.go` +
 instance set), `fabric_cmd.go` + `internal/fabric` (discovery: the loader builds
 `meta.fabricmc.net` publishes), `mods_cmd.go` + `internal/modrinth` (search and
 install content),
+`internal/mrpack` (reading a `.mrpack`: the file list, the loader it wants, the
+overrides it ships),
 `launch_cmd.go`
 (launch + java selection + the per-run `--server`/`--fullscreen`/`--demo`
 switches), `app.go` (shared
@@ -250,6 +252,32 @@ Content from Modrinth, verified against the live API:
 ./mcli add sodium --instance <vanilla instance>           # must refuse and name --loader fabric
 ```
 
+A modpack, verified with a real one (`fabulously-optimized`, 48 files, 41.9 MB,
+fabric-loader 0.19.5 on 26.3):
+
+```sh
+./mcli add <pack> --instance <matching instance> --dry-run   # the pack's plan
+./mcli add <pack> --instance <1.21.4 instance>                # must refuse: wrong game version
+./mcli add <pack> --instance <matching instance> --yes        # the real install
+```
+
+Verified with `fabulously-optimized` (48 files, 41.9 MB): 45 jars into `mods/`,
+3 zips into `resourcepacks/`, 51 override files, and a re-run that writes nothing.
+Two things to keep in mind, learned the hard way there:
+
+* **Ask the version JSON what an instance is** (`Version.GameVersion()`, `Version.Loader()`),
+  never the instance's name or its id: another launcher writes its own id, puts the
+  game version in `clientVersion` instead of `inheritsFrom`, and names the loader
+  only through its libraries. Reading the id made a matching pack look wrong.
+* **Skip zip folder entries before resolving a path.** `overrides/` is stored as an
+  entry with nothing after the prefix; resolving that empty path failed the whole
+  extract step *after* the 42 MB download. A fixture that omits folder entries
+  hides this — the test pack needs them.
+
+A pack is data from the internet: the index is read from inside the `.mrpack`
+(so a dry run fetches the pack and says so), paths that would leave the instance
+are refused, and `overrides/` never overwrites a file that already exists.
+
 Real end-to-end install (downloads ~55 MB plus a Java runtime):
 `./mcli create tiny --version rd-132211 && ./mcli launch tiny --yes` — the very
 first public version is the smallest (client 0 MB, assets ~50 MB).
@@ -292,7 +320,9 @@ first public version is the smallest (client 0 MB, assets ~50 MB).
 
 `docs/status.md` carries the ordered plan. Server-side launch and Fabric loader
 installation are done (`mcli server create/list/show/set/delete/start/stop/attach/cmd`,
-`mcli create|instance set --loader vanilla|fabric`, `mcli fabric list`); what is left is
-mod/resource-pack search (Modrinth/CurseForge, mirroring what PCL and Console
-Minecraft Launcher do — keep the search itself thin; installing a hit into the
-right instance is the real work).
+`mcli create|instance set --loader vanilla|fabric`, `mcli fabric list`). Content is
+done as well: `mcli search`/`add`/`mods` against Modrinth (no API key needed), and
+`add <pack>` installs a `.mrpack` — its file list, its overrides and the loader it
+was built for — after checking the pack's game version against the instance. What
+is left: CurseForge (per-user API key), CurseForge-format packs, updating an
+instance to a newer pack version, and `mcli update <instance>` for the game.

@@ -86,7 +86,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli fabric list <版本> [--limit N]` | 某个游戏版本可用的 Fabric 加载器列表 |
 | `mcli fabric list <版本> [--limit N]` | 列出某个游戏版本可用的 Fabric 加载器（安装走下面的 --loader 选项） |
 | `mcli search <关键词> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <版本>] [--loader <加载器>] [--limit N] [--offset N]` | 在 Modrinth 搜索（一次查询、一页结果） |
-| `mcli add <项目> [--instance <名称>] [--version <版本>] [--loader <加载器>] [--dry-run]` | 把项目的匹配文件装进实例 |
+| `mcli add <项目> [--instance <名称>] [--version <版本>] [--loader <加载器>] [--dry-run]` | 把项目的匹配文件装进实例；整合包会被读取并按整合包安装 |
 | `mcli mods [<名称>]` | 实例里已有的 mods/、resourcepacks/、shaderpacks/ |
 | `mcli server create <名称> --version <版本> [--java <路径>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <路径>] [--jvm-arg ...] [--eula]` | 注册服务器：独立目录、存档与端口；会打印 Minecraft EULA 并要求确认 |
 | `mcli server [list \| show <名称> \| set <名称> [--xmx] [--xms] [--port] [--java] [--version] \| delete <名称> [--keep-files] [--yes]]` | 查看与修改服务器 |

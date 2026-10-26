@@ -75,6 +75,31 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* Modpack installation, verified against a real pack: `add fabulously-optimized`
+  into an instance another launcher made fetched the `.mrpack` (173,859 bytes), read
+  its index (48 files, 41.9 MB, `fabric-loader 0.19.5` + `minecraft 26.3`) and
+  installed it — 45 jars into `mods/`, 3 zips into `resourcepacks/`, 51 files from
+  the pack's `overrides/` (a re-run writes 0 and keeps 51, and a file edited by hand
+  survives), every download checked against the SHA-1 the pack lists. The pack's game version is checked against the instance — the same command
+  into a 1.21.4 instance refused it by name and printed the `mcli create` line that
+  builds the right one — and a loader build the pack did not name is a warning, not
+  a failure. Pack paths that would land outside the instance directory are refused,
+  and `overrides/` never overwrites a file that already exists.
+* Two bugs that only a real pack could find, both in what an instance *is*:
+  1. That instance was built by PCL, which writes its own id and puts the game
+     version in `clientVersion` instead of `inheritsFrom`. Reading the game version
+     off the profile id compared the pack's `26.3` against `26.3-Fabric 0.20.1` and
+     refused a pack that fits. Versions now answer for themselves:
+     `Version.GameVersion()` prefers `inheritsFrom`, then `clientVersion`, then the
+     id, and `Version.Loader()` reads the loader and its version from the main class
+     and the loader libraries — so a profile mcli did not write answers the same
+     questions, and the loader-version warning prints `0.19.5` vs `0.20.1` instead of
+     two profile names.
+  2. A zip stores its folders as entries of their own (`overrides/` with nothing
+     after the prefix). Resolving that empty path failed the whole overrides step
+     *after* 42 MB had been downloaded. Folder entries are skipped before a path is
+     resolved; the fixture in `internal/mrpack` now contains them, which is why the
+     unit tests had missed it.
 * Modrinth search and install, verified against the live API: `search sodium
   --type mod --version 1.21.4 --loader fabric` listed 5 of 35 hits with downloads
   and authors; `add sodium --instance mf` downloaded the Fabric build
@@ -270,9 +295,10 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 
 1. **CurseForge**: Modrinth needs no key and is wired; CurseForge needs an API key
    per user, so it would need a config key and a key-shaped error path. Not started.
-2. **Modpack installation** (`modpack` is recognised as a project type but mcli
-   refuses to install one: unpacking a pack wants a manifest, overrides and a
-   loader chosen by the pack).
+2. **CurseForge packs and pack updates**: `.mrpack` packs install; a pack that
+   ships as a CurseForge zip, and updating an instance to a newer pack version,
+   are not implemented. `mcli update <instance>` for the *game* is still missing
+   too — `doctor`/`repair` only make an installed version whole.
 
 ## Conventions (detail AGENTS.md deliberately leaves out)
 

@@ -79,6 +79,23 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* 整合包安装，用真实的整合包验证过：把 `add fabulously-optimized` 装进一个**别的启动器建的**实例，
+  工具取回 `.mrpack`（173,859 字节），读出索引（48 个文件、41.9 MB、`fabric-loader 0.19.5`
+  + `minecraft 26.3`）并完成安装 —— 45 个 jar 进 `mods/`、3 个 zip 进 `resourcepacks/`、
+  51 个文件来自整合包的 `overrides/`（再跑一次写入 0、保留 51，手改过的文件也原样保留），
+  每个下载都按整合包给出的 SHA-1 校验。整合包的游戏版本会与实例比对 —— 同一条命令对着 1.21.4 的实例
+  会被拒绝并点名，同时打印出应该执行的 `mcli create` 命令 —— 而整合包没有指定的加载器构建只是
+  警告，不算失败。会落到实例目录之外的整合包路径一律拒绝，`overrides/` 也绝不覆盖已存在的文件。
+* 两个只有真实整合包才会暴露的 bug，都出在「实例到底是什么」这件事上：
+  1. 那个实例是 PCL 建的：它写自己的 id，游戏版本放在 `clientVersion` 而不是 `inheritsFrom`。
+     从 profile id 上读游戏版本，就会拿整合包的 `26.3` 去比 `26.3-Fabric 0.20.1`，把一个明明
+     适配的整合包拒掉。现在版本自己回答这些问题：`Version.GameVersion()` 优先 `inheritsFrom`，
+     其次 `clientVersion`，最后才是 id；`Version.Loader()` 从主类和加载器库读出加载器及其版本
+     —— 非 mcli 写出的 profile 也能给出同样的答案，加载器版本警告也会打印 `0.19.5` 对 `0.20.1`，
+     而不是两个 profile 名字。
+  2. zip 会把目录本身也存成条目（`overrides/` 后面什么都没有）。解析这个空路径会让整个覆盖
+     文件步骤失败 —— 而那已经是下载完 42 MB 之后。现在会在解析路径之前跳过目录条目；
+     `internal/mrpack` 的测试夹具现在也包含这种条目，这正是单测之前漏掉它的原因。
 * Modrinth 的搜索与安装，对着线上 API 实测过：`search sodium --type mod --version
   1.21.4 --loader fabric` 列出的 5/35 条结果带下载量与作者；`add sodium --instance mf`
   下载了 Fabric 版本（`sodium-fabric-0.6.13+mc1.21.4.jar`，1,306,799 字节），并按 API 给出的
@@ -246,11 +263,12 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 
 ## 计划中的工作，按维护者要求的顺序
 
+1. **CurseForge**：Modrinth 不需要 key，已经接上；CurseForge 每个用户都要 API key，因此
+   需要一个配置项和一条「缺 key」的报错路径。尚未开始。
+2. **CurseForge 整合包与整合包更新**：`.mrpack` 已经能装；以 CurseForge zip 形式发布的
+   整合包、以及把实例升到更新的整合包版本都没做。面向*游戏本体*的 `mcli update <实例>`
+   也还没有 —— `doctor`/`repair` 只负责让已安装的版本完整。
 
-1. **Mod 和资源包搜索** —— 照 PCL 和 Console Minecraft
-   Launcher 的做法：查询 Modrinth 和 CurseForge 的搜索 API、列出结果，并把一个
-   命中项装进某个实例的 `mods/` 或 `resourcepacks/`。搜索本身保持单薄（一次查
-   询、一页、只取重要的那几个字段）—— 有意思的工作是把结果装进正确的实例。
 
 ## 约定（AGENTS.md 故意没写的细节）
 

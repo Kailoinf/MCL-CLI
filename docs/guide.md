@@ -112,3 +112,28 @@ mcli mods modded                                       # what is already there
   a game that cannot load it. `--loader` overrides when you know what you are doing.
 * Required dependencies are printed but not installed automatically: a launcher
   that silently pulls three more projects makes a mess nobody can review.
+
+Modpacks are the same `add` command: the project type is read from the project, so a
+`.mrpack` installs as a pack.
+
+```sh
+mcli add fabulously-optimized --instance modded --dry-run   # what the pack wants
+mcli add fabulously-optimized --instance modded             # install it
+```
+
+A pack is a list of files plus a loader plus a game version, so installing one is
+mostly copying files to paths someone else decided — and the launcher's job is to
+say what does not fit:
+
+* The pack's own game version is checked against the instance. A 1.21.4 pack into a
+  1.20.1 instance is refused with the `mcli create` command that builds the right
+  one, because the result would not start and guessing would be worse.
+* The loader the pack asks for is installed if the instance has none; if the
+  instance already has a different build of that loader, mcli says so and carries
+  on — loader differences usually work, but the pack's own build is the tested one.
+* Every file is checked against the SHA-1 the pack lists, and paths are refused if
+  they would land outside the instance directory. A pack is data from the internet,
+  not an instruction to write wherever it likes.
+* The pack's `overrides/` are copied in, but never over a file that already exists:
+  a world or a config someone tuned by hand is not something a pack gets to
+  overwrite. What was kept is reported.

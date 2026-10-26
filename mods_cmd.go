@@ -11,6 +11,7 @@ import (
 	"github.com/Kailoinf/MCL-CLI/internal/i18n"
 	"github.com/Kailoinf/MCL-CLI/internal/mirror"
 	"github.com/Kailoinf/MCL-CLI/internal/modrinth"
+	"github.com/Kailoinf/MCL-CLI/internal/mrpack"
 	"github.com/Kailoinf/MCL-CLI/internal/store"
 )
 
@@ -114,10 +115,11 @@ func (a *App) cmdAdd(args []string) int {
 	if err != nil {
 		return a.fatal(err)
 	}
-	gameVersion, inferredLoader, err := a.instanceGameSpec(inst, f.str("version", ""), f.str("loader", ""))
+	spec, err := a.instanceSpecOf(inst, f.str("version", ""), f.str("loader", ""))
 	if err != nil {
 		return a.fatal(err)
 	}
+	gameVersion, inferredLoader := spec.Game, spec.Loader
 
 	// --- what is this project, and which file fits? ----------------------
 	meta, err := modrinth.ProjectInfo(a.Policy(), project)
@@ -127,6 +129,11 @@ func (a *App) cmdAdd(args []string) int {
 	projectType := meta.ProjectType
 	if f.str("type", "") != "" {
 		projectType = f.str("type", "")
+	}
+	if strings.EqualFold(projectType, "modpack") {
+		// A pack is not a file that belongs in a subdirectory: it is a list of
+		// files, a loader and a game version. That is a different install.
+		return a.addModpack(inst, project, meta, f.boolean("dry-run"))
 	}
 	subdir, ok := modrinth.DirFor(projectType)
 	if !ok {
@@ -285,33 +292,40 @@ func loaderTag(loader string) string {
 	return "/" + loader
 }
 
-// instanceGameSpec works out which game version the instance runs and which loader
-// it has, unless the caller already said.
-func (a *App) instanceGameSpec(inst *store.Instance, version, loader string) (string, string, error) {
-	game := version
-	modLoader := loader
-	if game != "" && modLoader != "" {
-		return game, modLoader, nil
+// instanceSpec is what an instance turns out to be running, once its version
+// JSON has been read.
+type instanceSpec struct {
+	Game    string
+	Loader  string
+	Version string // the loader's version, when the profile says
+}
+
+// instanceSpecOf works out which game version the instance runs and which loader
+// it has, unless the caller already said. It asks the version JSON rather than the
+// instance's name: an instance another launcher built (PCL writes `clientVersion`
+// and its own id, not `inheritsFrom`) has to answer the same questions as one
+// mcli created.
+func (a *App) instanceSpecOf(inst *store.Instance, game, loader string) (instanceSpec, error) {
+	spec := instanceSpec{Game: game, Loader: loader}
+	if spec.Game != "" && spec.Loader != "" {
+		return spec, nil
 	}
 	v, err := a.Loader(true).Lookup(inst.Version, "")
 	if err != nil {
-		if game == "" {
-			return "", "", err
+		if spec.Game == "" {
+			return spec, err
 		}
-		return game, modLoader, nil
+		return spec, nil
 	}
-	eff := v.Effective()
-	if game == "" {
-		// a modded profile inherits from the game version it loads
-		game = eff.ID
-		if eff.InheritsFrom != "" {
-			game = eff.InheritsFrom
-		}
+	if spec.Game == "" {
+		spec.Game = v.GameVersion()
 	}
-	if modLoader == "" && strings.HasPrefix(inst.Version, "fabric-loader-") {
-		modLoader = "fabric"
+	loaderName, loaderVersion := v.Loader()
+	if spec.Loader == "" {
+		spec.Loader = loaderName
 	}
-	return game, modLoader, nil
+	spec.Version = loaderVersion
+	return spec, nil
 }
 
 type contentFile struct {
@@ -391,4 +405,149 @@ func offsetHint(o modrinth.SearchOptions, shown, total int) string {
 		return ""
 	}
 	return i18n.T("mod.hint_more", o.Offset+shown)
+}
+
+// addModpack installs a Modrinth modpack: its file list, its overrides, and the
+// loader it was built for. A pack decides its own game version, so the instance
+// has to match — installing a 1.21.4 pack into a 1.20.1 instance produces a game
+// that cannot start, and guessing on the user's behalf would be worse than saying so.
+func (a *App) addModpack(inst *store.Instance, project string, meta modrinth.Project, dryRun bool) int {
+	versions, err := modrinth.Versions(a.Policy(), project, "", "")
+	if err != nil {
+		return a.fatal(err)
+	}
+	if len(versions) == 0 {
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.no_version", meta.Title, "", "")))
+	}
+	chosen := versions[0]
+	file, ok := modrinth.PickFile(chosen)
+	if !ok {
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.no_file", meta.Title)))
+	}
+
+	// The index lives inside the .mrpack, so the pack has to be fetched first —
+	// even for a dry run, which says so rather than downloading in silence.
+	if dryRun {
+		a.Log.Printf("%s", i18n.T("mod.pack_dry_fetch", meta.Title, humanBytes(file.Size)))
+	}
+	packPath, cleanup, err := a.fetchTemp(file)
+	if err != nil {
+		if !dryRun {
+			return a.fatal(err)
+		}
+		// A dry run still has to know what the pack contains: report the size and
+		// stop short rather than downloading on a "show me" command.
+		a.Log.Printf("%s", i18n.T("mod.pack_dry", meta.Title, chosen.VersionNumber, humanBytes(file.Size)))
+		a.Log.Printf("%s", i18n.T("mcv.dry_run"))
+		return 0
+	}
+	defer cleanup()
+
+	idx, err := mrpack.Open(packPath)
+	if err != nil {
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", meta.Title, err)))
+	}
+	loader, loaderVersion := idx.Loader()
+	game := idx.GameVersion()
+	a.Log.Printf("%s", i18n.T("mod.pack_found", idx.Name, chosen.VersionNumber, game))
+
+	// --- does this instance match the pack? ------------------------------
+	spec, err := a.instanceSpecOf(inst, "", "")
+	if err != nil {
+		return a.fatal(err)
+	}
+	instGame, instLoader := spec.Game, spec.Loader
+	if game != "" && instGame != "" && game != instGame {
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_mismatch", idx.Name, game, inst.Name, instGame, game, game)))
+	}
+	if loader != "" && loader != "fabric" {
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_loader_unsupported", idx.Name, loader)))
+	}
+	if loader == "fabric" && instLoader != "" && loaderVersion != "" &&
+		loaderDiffers(spec.Version, loaderVersion) {
+		// A pack is tested against one loader build. A different one usually runs
+		// it, so this is a warning, not a refusal — but staying quiet about it
+		// would leave a person blaming the pack when something odd happens.
+		have := spec.Version
+		if have == "" {
+			have = inst.Version
+		}
+		a.Log.Printf("%s", i18n.T("mod.pack_loader_diff", idx.Name, loaderVersion, inst.Name, have))
+	}
+	if loader == "fabric" && instLoader == "" {
+		a.Log.Printf("%s", i18n.T("mod.pack_needs_loader", idx.Name, loaderVersion))
+		if !dryRun {
+			id, err := a.ensureLoaderTarget(versionRef{id: inst.Version, game: game}, loaderFabric, loaderVersion)
+			if err != nil {
+				return a.fatal(err)
+			}
+			if id != "" {
+				inst.Version = id
+				if err := a.Store.Save(); err != nil {
+					return a.fatal(err)
+				}
+			}
+		}
+	}
+
+	// --- the pack's files ------------------------------------------------
+	items, err := mrpack.Items(idx, a.instanceDir(inst.Name))
+	if err != nil {
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", meta.Title, err)))
+	}
+	total := mrpack.TotalBytes(items)
+	a.Log.Printf("%s", i18n.T("mod.pack_files", len(items), humanBytes(total)))
+	if dryRun {
+		for _, it := range items[:min(len(items), 10)] {
+			a.Log.Infof("%s", it.Dest)
+		}
+		if len(items) > 10 {
+			a.Log.Infof("%s", i18n.T("dl.and_more", len(items)-10))
+		}
+		a.Log.Printf("%s", i18n.T("mcv.dry_run"))
+		return 0
+	}
+	if !a.Yeseverything {
+		ok, err := a.confirmBatch(idx.Name, len(items), total)
+		if err != nil {
+			return a.fatal(err)
+		}
+		if !ok {
+			return a.fatal(fmt.Errorf("%s", i18n.T("dl.declined", idx.Name)))
+		}
+	}
+	if err := dl.FetchAll(a.Policy(), items, 4, a.Log); err != nil {
+		return a.fatal(err)
+	}
+	written, kept, err := mrpack.ExtractOverrides(packPath, a.instanceDir(inst.Name))
+	if err != nil {
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", meta.Title, err)))
+	}
+	a.Log.Printf("%s", i18n.T("mod.pack_done", idx.Name, len(items), humanBytes(total)))
+	a.Log.Printf("%s", i18n.T("mod.pack_overrides", len(written), len(kept)))
+	return 0
+}
+
+// fetchTemp downloads one file to a temporary path and returns it with its
+// cleanup. The .mrpack itself is not part of the instance: keeping it would leave
+// a stray zip in the game directory.
+func (a *App) fetchTemp(file modrinth.File) (string, func(), error) {
+	tmp, err := os.CreateTemp("", "mcli-pack-*.mrpack")
+	if err != nil {
+		return "", func() {}, err
+	}
+	path := tmp.Name()
+	tmp.Close()
+	item := dl.Item{
+		Candidates: []mirror.Candidate{{URL: file.URL, Source: "modrinth"}},
+		Dest:       path,
+		SHA1:       file.Hashes.SHA1,
+		Size:       file.Size,
+		Desc:       filepath.Base(file.Filename),
+	}
+	if err := dl.FetchAll(a.Policy(), []dl.Item{item}, 1, a.Log); err != nil {
+		os.Remove(path)
+		return "", func() {}, err
+	}
+	return path, func() { os.Remove(path) }, nil
 }

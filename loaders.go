@@ -158,3 +158,12 @@ func isLatest(v string) bool {
 	}
 	return false
 }
+
+// loaderDiffers reports whether two loader versions name different builds. The
+// comparison is on the version itself, not on the profile id it was written into,
+// and a build suffix ("0.20.1+build.3") is not a difference: a pack that names a
+// loader the instance does not have byte-for-byte is worth a word, not a refusal.
+func loaderDiffers(a, b string) bool {
+	base := func(s string) string { return strings.SplitN(strings.TrimSpace(s), "+", 2)[0] }
+	return base(a) != base(b)
+}

@@ -278,8 +278,12 @@ type Arguments struct {
 
 // Version is a version JSON document, possibly inheriting from another one.
 type Version struct {
-	ID                 string              `json:"id"`
-	InheritsFrom       string              `json:"inheritsFrom,omitempty"`
+	ID           string `json:"id"`
+	InheritsFrom string `json:"inheritsFrom,omitempty"`
+	// ClientVersion is the game version a profile was built for. Plain
+	// launchers write it into profiles they generate (PCL does), while versions
+	// that follow the official shape carry the same fact in inheritsFrom.
+	ClientVersion      string              `json:"clientVersion,omitempty"`
 	Type               string              `json:"type,omitempty"`
 	MainClass          string              `json:"mainClass,omitempty"`
 	Assets             string              `json:"assets,omitempty"`
@@ -396,6 +400,63 @@ func ClientJarTarget(root, versionsDir string, v *Version) (jarID, path string) 
 
 // Effective returns the merged version: child fields win, parent libraries and
 // arguments come first. It is what launching and installing operate on.
+// Loader reports the mod loader a version carries, read from the version itself:
+// the main class it starts and the loader libraries in its classpath. A profile
+// another launcher wrote is described the same way as one mcli fetched, so this
+// works for instances mcli did not create — the point being that "which loader is
+// this instance running" must not depend on how its id happens to be spelled.
+func (v *Version) Loader() (name, version string) {
+	eff := v.Effective()
+	lower := strings.ToLower(eff.MainClass)
+	switch {
+	case strings.Contains(lower, "quiltmc"):
+		name = "quilt"
+	case strings.Contains(lower, "fabricmc") || strings.Contains(lower, "fabric.loader"):
+		name = "fabric"
+	case strings.Contains(lower, "neoforged"):
+		name = "neoforge"
+	case strings.Contains(lower, "minecraftforge"):
+		name = "forge"
+	}
+	markers := map[string]string{
+		"net.fabricmc:fabric-loader": "fabric",
+		"org.quiltmc:quilt-loader":   "quilt",
+		"net.neoforged:neoforge":     "neoforge",
+		"net.minecraftforge:forge":   "forge",
+	}
+	for _, lib := range eff.Libraries {
+		for coordinate, loader := range markers {
+			if !strings.HasPrefix(lib.Name, coordinate+":") {
+				continue
+			}
+			if name == "" {
+				name = loader
+			}
+			if version == "" {
+				parts := strings.Split(lib.Name, ":")
+				if len(parts) >= 3 {
+					version = parts[2]
+				}
+			}
+		}
+	}
+	return name, version
+}
+
+// GameVersion is the Minecraft version this profile is for: what it inherits from
+// when it says so, the version it was built for when a launcher wrote that, and
+// otherwise its own id.
+func (v *Version) GameVersion() string {
+	eff := v.Effective()
+	if eff.InheritsFrom != "" {
+		return eff.InheritsFrom
+	}
+	if eff.ClientVersion != "" {
+		return eff.ClientVersion
+	}
+	return eff.ID
+}
+
 func (v *Version) Effective() *Version {
 	chain := []*Version{}
 	for cur := v; cur != nil; cur = cur.parent {
@@ -412,6 +473,9 @@ func merge(parent, child *Version) *Version {
 	out := *child
 	if out.MainClass == "" {
 		out.MainClass = parent.MainClass
+	}
+	if out.ClientVersion == "" {
+		out.ClientVersion = parent.ClientVersion
 	}
 	if out.Assets == "" {
 		out.Assets = parent.Assets
