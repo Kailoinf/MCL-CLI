@@ -27,6 +27,8 @@ features:
     details: "`mcli doctor` says what is missing or damaged and exits non-zero when something is wrong; `mcli repair` fetches exactly that list and nothing else."
   - title: Servers
     details: "`mcli server` installs a server jar, writes eula.txt and server.properties, runs it attached or detached, and lets you attach to a running console."
+  - title: Mods and resource packs
+    details: "`mcli search` queries Modrinth — one query, one page — and `mcli add` puts the matching file into the instance's mods/, resourcepacks/ or shaderpacks/ with its SHA-1 checked. A vanilla instance is told to use a loader instead of quietly getting a jar it cannot load."
   - title: Fabric
     details: "The loader is a choice on the version: `--loader fabric` on `create` and `instance set` fetches the profile Fabric publishes, so instances with mods work — including the ones another launcher set up."
 ---

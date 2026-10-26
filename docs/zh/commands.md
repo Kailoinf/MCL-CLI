@@ -15,7 +15,7 @@
 | 命令 | 作用 |
 | --- | --- |
 | `mcli list [--instances] [--accounts] [--available] [--type <t>] [--search <text>] [--limit N]` | 实例、账号或可下载的版本 |
-| `mcli create <name> --version <v> [--fabric] [--loader <v>] [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg …] [--game-arg …] [--force]` | 创建一个实例，可选地基于 Fabric loader |
+| `mcli create <名称> --version <版本> [--loader vanilla\|fabric] [--loader-version <版本>] [--java <路径>] [--xmx 4G] [--xms 1G] [--jvm-arg …] [--game-arg …] [--force]` | 创建实例，可选模组加载器 |
 | `mcli launch <name>\|<version>\|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <a>]` | 按需安装并启动 |
 | `mcli instance [list \| show <name> \| set <name> … \| copy <src> <dst> [--with-files] \| rename <old> <new> \| scan [--all] \| import <version> [--as <name>]]` | 查看和修改实例，接管已有的安装 |
 | `mcli delete <name> [--keep-files] [--yes]` | 删除一个实例 |
@@ -39,7 +39,15 @@
 | 命令 | 作用 |
 | --- | --- |
 | `mcli fabric list <game> [--limit N]` | 某个游戏版本已发布的加载器构建 |
-| `mcli fabric install <game> [<loader>] [--loader <v>]` | 安装一个加载器 profile |
+| `mcli fabric list <版本> [--limit N]` | 列出 Fabric 发布的加载器构建（安装用 `create --loader fabric`） |
+
+## 模组与资源（Modrinth）
+
+| 命令 | 作用 |
+| --- | --- |
+| `mcli search <关键词> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <版本>] [--loader <加载器>] [--limit N] [--offset N]` | 在 Modrinth 搜索：一次查询、一页结果 |
+| `mcli add <项目> [--instance <名称>] [--version <版本>] [--loader <加载器>] [--type <类型>] [--dry-run]` | 把项目的匹配文件装进实例 |
+| `mcli mods [<名称>]` | 列出实例的 `mods/`、`resourcepacks/`、`shaderpacks/`、`datapacks/` |
 
 ## Java 与配置
 

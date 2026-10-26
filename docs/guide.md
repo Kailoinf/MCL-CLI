@@ -86,3 +86,29 @@ want a specific build. A value outside the choice is an error that lists the
 alternatives, never a silent fallback. The profile Fabric publishes is written
 into mcli's own `versions/` directory, so it works offline afterwards and can be
 launched, repaired and diagnosed like any other version.
+
+## Mods and content
+
+Modrinth is the source mcli uses — it needs no API key, and its API is small enough
+to wrap honestly.
+
+```sh
+mcli search sodium --version 1.21.4 --loader fabric    # one query, one page
+mcli search faithful --type resourcepack --version 1.21.4
+mcli add sodium --instance modded                     # downloads the file that fits
+mcli add faithful --instance modded --dry-run          # what would land where
+mcli mods modded                                       # what is already there
+```
+
+* The search is deliberately thin: one query and one page (`--limit`, `--offset`
+  for the next), showing the slug to install, the type, downloads, author and
+  title. There is no browsing UI to maintain.
+* `add` picks the newest version that matches the instance's game version and
+  loader, downloads its primary file with the SHA-1 the API declares, and puts it
+  in the right place by project type: `mods/`, `resourcepacks/`, `shaderpacks/`,
+  `datapacks/`.
+* A mod needs a loader. Installing one into a vanilla instance is refused with the
+  command that fixes it (`--loader fabric`), rather than dropping a Fabric jar into
+  a game that cannot load it. `--loader` overrides when you know what you are doing.
+* Required dependencies are printed but not installed automatically: a launcher
+  that silently pulls three more projects makes a mess nobody can review.

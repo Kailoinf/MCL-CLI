@@ -344,7 +344,7 @@ var zh = map[string]string{
 	"srv.attach_unsupported":   "本系统不支持接入服务器控制台（没有 FIFO）；请改用前台 mcli server start",
 	"srv.cmd_sent":             "已发送：%s",
 
-	"mod.needs_loader":   "实例 %s 是原版 %s；模组需要加载器 —— 可以用 mcli create <名称> --version %s --fabric 建一个 Fabric 实例，或加 --loader 强制只放文件",
+	"mod.needs_loader":   "实例 %s 是原版 %s；模组需要加载器 —— 可以用 mcli create <名称> --version %s --loader fabric 建一个，或加 --loader 强制只放文件",
 	"mod.loader_implied": "按实例自身的加载器：%s",
 	// ---------------------------------------------------------------- mod loaders (a choice)
 	"loader.bad":             "未知的加载器 %q；可选值：%s",

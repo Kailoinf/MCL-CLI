@@ -10,8 +10,9 @@ and what is left. Update it in the same commit as the work.
 * `gofmt -l .` empty, `go vet ./...` clean, `go test ./...` green,
   `go build -o mcli .` green.
 * Commands implemented: `version help list create delete launch refresh config
-  java login logout account instance doctor repair server fabric` (`fix` aliases
-  `repair`, `srv` aliases `server`, `fab` aliases `fabric`).
+  java login logout account instance doctor repair server fabric search add mods`
+  (`fix` aliases `repair`, `srv` aliases `server`, `fab` aliases `fabric`, `find`
+  aliases `search`).
 * `docs/` is a VitePress site (`pnpm install && pnpm docs:build`, output in
   `docs/.vitepress/dist`); `skill/SKILL.md` ships in the repository and is updated
   with the feature it describes.
@@ -74,6 +75,16 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* Modrinth search and install, verified against the live API: `search sodium
+  --type mod --version 1.21.4 --loader fabric` listed 5 of 35 hits with downloads
+  and authors; `add sodium --instance mf` downloaded the Fabric build
+  (`sodium-fabric-0.6.13+mc1.21.4.jar`, 1,306,799 bytes) with the SHA-1 the API
+  declares, and a second run reported it as already installed and intact;
+  `mods mf` listed it. A resource pack went to the right place too
+  (`add faithful-32x --type resourcepack` picked `Faithful 32x - 1.21.4.zip`,
+  10.0 MiB, into `resourcepacks/`), the loader was inferred from the instance
+  (`fabric`), and a vanilla instance was refused with the command that fixes it
+  instead of getting a jar it cannot load.
 * The mod loader became a **choice on the version** rather than a second positional
   and a command of its own: `mcli create <name> --version <v> --loader vanilla|fabric
   [--loader-version <v>]` and the same pair on `mcli instance set`, with
@@ -257,11 +268,11 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 ## Planned work, in the order the maintainer asked for it
 
 
-1. **Mod and resource-pack search** — mirror what PCL and Console Minecraft
-   Launcher do: query Modrinth's and CurseForge's search APIs, list results, and
-   install a hit into `mods/` or `resourcepacks/` of an instance. Keep the search
-   itself thin (one query, one page, the fields that matter) — the interesting
-   work is installing the result into the right instance.
+1. **CurseForge**: Modrinth needs no key and is wired; CurseForge needs an API key
+   per user, so it would need a config key and a key-shaped error path. Not started.
+2. **Modpack installation** (`modpack` is recognised as a project type but mcli
+   refuses to install one: unpacking a pack wants a manifest, overrides and a
+   loader chosen by the pack).
 
 ## Conventions (detail AGENTS.md deliberately leaves out)
 

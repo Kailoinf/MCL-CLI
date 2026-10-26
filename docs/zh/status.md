@@ -9,7 +9,7 @@
 * `gofmt -l .` 无输出，`go vet ./...` 干净，`go test ./...` 全绿，
   `go build -o mcli .` 全绿。
 * 已实现的命令：`version help list create delete launch refresh config
-  java login logout account instance doctor repair server fabric`（`fix` 是
+  java login logout account instance doctor repair server fabric search add mods`（`fix` 是
   `repair` 的别名，`srv` 是 `server` 的别名，`fab` 是 `fabric` 的别名）。
 * `docs/` 是一个 VitePress 站点（`pnpm install && pnpm docs:build`，产物在
   `docs/.vitepress/dist`）；`skill/SKILL.md` 随仓库一起发布，并且与它所描述的
@@ -79,14 +79,33 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* Modrinth 的搜索与安装，对着线上 API 实测过：`search sodium --type mod --version
+  1.21.4 --loader fabric` 列出的 5/35 条结果带下载量与作者；`add sodium --instance mf`
+  下载了 Fabric 版本（`sodium-fabric-0.6.13+mc1.21.4.jar`，1,306,799 字节），并按 API 给出的
+  SHA-1 校验；再跑一次会报告「已安装且完好」；`mods mf` 把它列了出来。资源包也进了正确目录
+  （`add faithful-32x --type resourcepack` 选中 `Faithful 32x - 1.21.4.zip`，10.0 MiB，
+  落到 `resourcepacks/`），加载器能从实例自身推断（`fabric`），而原版实例会被拒绝，并给出
+  应该执行的命令，而不是塞给它一个加载不了的 jar。
+* 模组加载器变成了**版本上的一个选项**，而不是第二个位置参数、也不是一条独立命令：
+  `mcli create <名称> --version <版本> --loader vanilla|fabric [--loader-version <版本>]`，
+  `mcli instance set` 上是同一对参数；`mcli fabric list <游戏版本>` 只负责发现，
+  `fabric install` 已删除。这样做的依据就是通行标准 —— 位置参数只留「命令作用的对象」，
+  其余全是取值封闭的选项（GNU 长选项；clap 的 ValueEnum；CMCL 把 loader 挂在它的 version
+  命令上，Fabric 自家安装器用 `-loader`）—— 非法的取值会以退出码 2 报错并列出可选值。
+* 实测过的往返：`create mf --version 1.21.4 --loader fabric` 装好 0.20.1 的 profile，并把实例
+  指向 `fabric-loader-0.20.1-1.21.4`（dry-run：69 个 classpath 条目、`KnotClient`、
+  `fabric-loader-0.20.1.jar`）；`instance set modtest --loader fabric` 把已有实例切到该 profile，
+  `--loader vanilla` 又把它切回 `1.21.4`。真机测试还抓到一个单测抓不到的 bug：空的
+  `--loader-version` 并没有被当作「最新稳定版」，profile URL 里的构建号是空的，于是 404 ——
+  `isLatest` 现在接受空字符串，并有测试钉住。
 * 分离的服务器不能继承 mcli 的 stdout：一个打开的管道会让每个调用者去等一个
   永不结束的进程。它现在在自己的 session 里写
   `logs/console.log`，所以 `start --detach` 在 0.2s 内返回。
 
 * Fabric，对着同一台机器上 PCL 已经装好的 loader：`fabric list 26.3` 报告
-  255 个 build，最新稳定版为 0.20.1，`fabric
-  install 26.3` 写出 `versions/fabric-loader-0.20.1-26.3/fabric-loader-0.20.1-26.3.json`，
-  而 `create fab2 --version 26.3 --fabric` 产出的实例，其 dry-run 命令行里有
+  255 个 build，最新稳定版为 0.20.1，
+  已装载的 loader 写进 `versions/fabric-loader-0.20.1-26.3/`，而
+  `create --version 26.3 --loader fabric` 产出的实例，其 dry-run 命令行里有
   `KnotClient`、原样保留的 `-DFabricMcEmu= net.minecraft.client.main.Main `、
   父版本的 `26.3/26.3.jar` 和 **62** 个 classpath 条目。这份条目列表与 mcli 为
   PCL 自己的 `26.3-Fabric 0.20.1` profile 构建的那份逐字节相同（两条

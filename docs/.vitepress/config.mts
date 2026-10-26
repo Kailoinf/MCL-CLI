@@ -62,21 +62,35 @@ export default defineConfig({
       link: "/zh/",
       themeConfig: {
         nav: [
-          { text: "指南", link: "/zh/" },
-          { text: "命令", link: "/commands" },
-          { text: "状态", link: "/status" },
+          { text: "指南", link: "/zh/guide" },
+          { text: "命令", link: "/zh/commands" },
+          { text: "架构", link: "/zh/architecture" },
+          { text: "状态", link: "/zh/status" },
         ],
         sidebar: [
           {
-            text: "中文",
-            items: [{ text: "快速上手", link: "/zh/" }],
+            text: "从这里开始",
+            items: [
+              { text: "首页", link: "/zh/" },
+              { text: "指南", link: "/zh/guide" },
+              { text: "命令参考", link: "/zh/commands" },
+            ],
           },
           {
-            text: "参考（英文）",
+            text: "内部",
             items: [
-              { text: "Commands", link: "/commands" },
-              { text: "Architecture", link: "/architecture" },
-              { text: "Live status", link: "/status" },
+              { text: "架构", link: "/zh/architecture" },
+              { text: "设计决策", link: "/zh/design-decisions" },
+            ],
+          },
+          {
+            text: "项目",
+            items: [
+              { text: "实时状态", link: "/zh/status" },
+              {
+                text: "开发手册（skill）",
+                link: "https://github.com/Kailoinf/MCL-CLI/blob/main/skill/SKILL.md",
+              },
             ],
           },
         ],

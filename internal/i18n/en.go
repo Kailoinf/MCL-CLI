@@ -344,7 +344,7 @@ var en = map[string]string{
 	"srv.attach_unsupported":   "this system cannot attach to a server console (no FIFO); use `mcli server start` in the foreground instead",
 	"srv.cmd_sent":             "sent: %s",
 
-	"mod.needs_loader":   "instance %s runs vanilla Minecraft %s; a mod needs a loader — create a Fabric instance (`mcli create <name> --version %s --fabric`) or pass --loader to place the file anyway",
+	"mod.needs_loader":   "instance %s runs vanilla Minecraft %s; a mod needs a loader — create one with `mcli create <name> --version %s --loader fabric`, or pass --loader to place the file anyway",
 	"mod.loader_implied": "using the instance's loader: %s",
 	// ---------------------------------------------------------------- mod loaders (a choice)
 	"loader.bad":             "unknown loader %q; the choices are %s",

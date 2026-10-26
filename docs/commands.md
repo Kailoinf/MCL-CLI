@@ -42,6 +42,14 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 | `mcli fabric list <game> [--limit N]` | loader builds published for a game version |
 | `mcli fabric list <game> [--limit N]` | the loader builds Fabric publishes (installing is `create --loader fabric`) |
 
+## Mods and content (Modrinth)
+
+| Command | What it does |
+| --- | --- |
+| `mcli search <query> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <game>] [--loader <loader>] [--limit N] [--offset N]` | search Modrinth: one query, one page |
+| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--type <t>] [--dry-run]` | install a project's matching file into an instance |
+| `mcli mods [<instance>]` | list what an instance has in `mods/`, `resourcepacks/`, `shaderpacks/`, `datapacks/` |
+
 ## Java and configuration
 
 | Command | What it does |

@@ -38,8 +38,18 @@ mcli create modded --version latest --loader fabric          # 安装最新稳�
 mcli instance set modded --loader vanilla                     # 也能切回原版
 ```
 
-## 英文文档
+## 模组与资源
 
-命令参考见 [Commands](/commands)，架构与取舍见 [Architecture](/architecture)、
-[Design decisions](/design-decisions)，项目当前状态（实测到什么、还剩什么）见
-[Status](/status)。中文速览也写在仓库的 `README.zh-CN.md`。
+```sh
+mcli search sodium --version 1.21.4 --loader fabric   # 在 Modrinth 上搜索
+mcli add sodium --instance modded                    # 装进实例的 mods/
+mcli mods modded                                     # 看看已经装了什么
+```
+
+## 继续读
+
+[指南](/zh/guide) · [命令参考](/zh/commands) · [架构](/zh/architecture) ·
+[设计决策](/zh/design-decisions) · [实时状态](/zh/status)。
+英文页面对应 [Guide](/guide)、[Commands](/commands)、[Architecture](/architecture)、
+[Design decisions](/design-decisions)、[Status](/status)；仓库里还有
+`README.zh-CN.md` 速览和 `skill/SKILL.md` 开发手册。
