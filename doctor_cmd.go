@@ -2,15 +2,19 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Kailoinf/MCL-CLI/internal/dl"
 	"github.com/Kailoinf/MCL-CLI/internal/i18n"
 	"github.com/Kailoinf/MCL-CLI/internal/java"
+	"github.com/Kailoinf/MCL-CLI/internal/mcserver"
 	"github.com/Kailoinf/MCL-CLI/internal/mcv"
+	"github.com/Kailoinf/MCL-CLI/internal/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -40,10 +44,22 @@ func (a *App) cmdDoctor(args []string) int {
 	problems := a.doctorEnvironment()
 	switch {
 	case len(f.args) == 1:
-		problems += a.doctorInstance(f.args[0], f.boolean("deep"))
+		// One name: an instance first, and a server when that is what it names —
+		// both are things mcli installs and both can be broken.
+		if _, ok := a.Store.GetInstance(f.args[0]); ok {
+			problems += a.doctorInstance(f.args[0], f.boolean("deep"))
+		} else if _, ok := a.Store.GetServer(f.args[0]); ok {
+			problems += a.doctorServer(f.args[0])
+		} else {
+			a.Log.Printf("%s", i18n.T("inst.not_found", f.args[0]))
+			problems++
+		}
 	case f.boolean("all"):
 		for _, name := range a.Store.InstanceNames() {
 			problems += a.doctorInstance(name, f.boolean("deep"))
+		}
+		for _, name := range a.Store.ServerNames() {
+			problems += a.doctorServer(name)
 		}
 	default:
 		if n := len(a.Store.InstanceNames()); n > 0 {
@@ -269,6 +285,11 @@ func (a *App) cmdRepair(args []string) int {
 	name := f.args[0]
 	inst, ok := a.Store.GetInstance(name)
 	if !ok {
+		// Not an instance: a server has one file to repair and gets the same
+		// command, so `mcli repair <server>` fetches its jar and nothing else.
+		if srv, isServer := a.Store.GetServer(name); isServer {
+			return a.repairServer(srv, f.boolean("dry-run"), f.boolean("force"))
+		}
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", name)))
 	}
 	if inst.Version == "" {
@@ -428,4 +449,259 @@ func countSuffix(dir, suffix string) int {
 		}
 	}
 	return n
+}
+
+// ---------------------------------------------------------------------------
+// servers
+//
+// A server is the other half of the project and gets the same treatment: what is
+// missing, what does not match, and what mcli will not touch. repair fetches the
+// jar, and nothing else — eula.txt, server.properties and the world belong to the
+// person running the server.
+
+// doctorServer reports on one server install, and returns the number of problems.
+func (a *App) doctorServer(name string) int {
+	a.Log.Printf("%s", i18n.T("doc.server_header", name))
+	srv, ok := a.Store.GetServer(name)
+	if !ok {
+		a.Log.Printf("%s", i18n.T("srv.not_found", name))
+		return 1
+	}
+	dir := a.serverDir(srv)
+	if _, err := os.Stat(dir); err != nil {
+		a.Log.Printf("%s", i18n.T("doc.srv_dir_missing", dir))
+		return 1
+	}
+	problems := 0
+
+	// --- the jar, against the version's own checksum --------------------
+	eff, err := a.effectiveVersion(srv.Version)
+	if err != nil {
+		a.Log.Printf("%s", i18n.T("doc.version_json_missing", srv.Version, err))
+		problems++
+	} else {
+		need := java.RequiredMajor(eff, srv.Version, a.Log)
+		if rt := java.Pick(java.ScanRuntimes(a.Store.Cfg(), a.Paths, a.Log), need); rt != nil {
+			a.Log.Printf("%s", i18n.T("doc.required_java", need, rt.Path, rt.Major))
+		} else {
+			a.Log.Printf("%s", i18n.T("java.none_found", srv.Version, need))
+			problems++
+		}
+
+		o := a.serverOptions(srv, eff, srv.Version)
+		item, ok := mcserver.JarItem(o, a.Mapper())
+		jar := mcserver.JarPath(o)
+		switch info, statErr := os.Stat(jar); {
+		case !ok:
+			a.Log.Printf("%s", i18n.T("doc.srv_jar_unknown", srv.Version))
+			problems++
+		case os.IsNotExist(statErr):
+			a.Log.Printf("%s", i18n.T("doc.srv_jar_missing", jar, humanBytes(item.Size), name))
+			problems++
+		default:
+			got, hashErr := sha1File(jar)
+			switch {
+			case hashErr != nil:
+				a.Log.Printf("%s", i18n.T("doc.srv_jar_unreadable", jar, hashErr))
+				problems++
+			case got != item.SHA1:
+				a.Log.Printf("%s", i18n.T("doc.srv_jar_corrupt", jar, humanBytes(info.Size()), humanBytes(item.Size), name))
+				problems++
+			default:
+				a.Log.Printf("%s", i18n.T("doc.srv_jar_ok", jar, humanBytes(info.Size())))
+			}
+		}
+	}
+
+	// --- licence, properties, port --------------------------------------
+	eulaPath := filepath.Join(dir, "eula.txt")
+	switch _, err := os.ReadFile(eulaPath); {
+	case err != nil:
+		a.Log.Printf("%s", i18n.T("doc.srv_eula_missing", mcserver.EulaURL))
+		problems++
+	case !mcserver.EulaAccepted(dir):
+		a.Log.Printf("%s", i18n.T("doc.srv_eula_false", eulaPath, mcserver.EulaURL))
+		problems++
+	default:
+		a.Log.Printf("%s", i18n.T("doc.srv_eula_ok"))
+	}
+
+	if raw, err := os.ReadFile(filepath.Join(dir, "server.properties")); err != nil {
+		a.Log.Printf("%s", i18n.T("doc.srv_props_missing"))
+	} else if port, ok := parsePropertyPort(string(raw)); !ok {
+		a.Log.Printf("%s", i18n.T("doc.srv_props_bad"))
+		problems++
+	} else {
+		a.Log.Printf("%s", i18n.T("doc.srv_port_line", port))
+		if other, clash := a.serverPortClash(name, port); clash {
+			a.Log.Printf("%s", i18n.T("doc.srv_port_clash", port, other))
+			problems++
+		} else if pid, alive, _ := serverProcess(srv.Pid, dir); alive {
+			a.Log.Printf("%s", i18n.T("doc.srv_running", pid))
+		} else if busy, why := portBusy(port); busy {
+			a.Log.Printf("%s", i18n.T("doc.srv_port_busy", port, why))
+			problems++
+		} else {
+			a.Log.Printf("%s", i18n.T("doc.srv_port_free", port))
+		}
+	}
+
+	// --- the record of the process, and the last log --------------------
+	if srv.Pid > 0 {
+		if _, alive, _ := serverProcess(srv.Pid, dir); !alive {
+			a.Log.Printf("%s", i18n.T("doc.srv_stale_pid", srv.Pid))
+			problems++
+		}
+	}
+	if log := mcserverLog(dir); log != "" {
+		if raw, err := os.ReadFile(log); err == nil {
+			state := i18n.T("doc.srv_log_not_ready")
+			if strings.Contains(string(raw), mcserver.ReadyLine) {
+				state = i18n.T("doc.srv_log_ready")
+			}
+			a.Log.Printf("%s", i18n.T("doc.srv_log_line", log, state))
+		}
+	} else {
+		a.Log.Printf("%s", i18n.T("doc.srv_no_log"))
+	}
+	if free, ok := freeBytes(dir); ok {
+		a.Log.Printf("%s", i18n.T("doc.disk_free", dir, humanBytes(int64(free))))
+	}
+	a.Log.Printf("%s", i18n.T("doc.srv_dir_size", dirSize(dir)))
+
+	if problems == 0 {
+		a.Log.Printf("%s", i18n.T("doc.srv_healthy", name))
+	} else {
+		a.Log.Printf("%s", i18n.T("doc.srv_fix_hint", name))
+	}
+	return problems
+}
+
+// mcserverLog is the log a server writes: logs/latest.log. latestGameLog looks for
+// the *client*'s game-*.log files, which never exist in a server directory.
+func mcserverLog(dir string) string {
+	path := filepath.Join(dir, "logs", "latest.log")
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	return path
+}
+
+// parsePropertyPort reads the port out of a server.properties file.
+func parsePropertyPort(body string) (int, bool) {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found || strings.TrimSpace(key) != "server-port" {
+			continue
+		}
+		port, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || port < 1 || port > 65535 {
+			return 0, false
+		}
+		return port, true
+	}
+	return 0, false
+}
+
+// serverPortClash reports whether another registered server claims the same port,
+// which would make whichever starts second fail.
+func (a *App) serverPortClash(name string, port int) (string, bool) {
+	for _, other := range a.Store.ServerNames() {
+		if other == name {
+			continue
+		}
+		srv, ok := a.Store.GetServer(other)
+		if !ok {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(a.serverDir(srv), "server.properties"))
+		if err != nil {
+			continue
+		}
+		if otherPort, ok := parsePropertyPort(string(raw)); ok && otherPort == port {
+			return other, true
+		}
+	}
+	return "", false
+}
+
+// portBusy reports whether anything is listening on the loopback port, and what the
+// kernel says about it. It is a read-only probe: doctor never binds a real port for
+// long enough to matter, and a running server is reported as running instead.
+func portBusy(port int) (bool, string) {
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err == nil {
+		ln.Close()
+		return false, ""
+	}
+	return true, err.Error()
+}
+
+// repairServer makes a server's jar what the version says it should be, and touches
+// nothing else. eula.txt, server.properties and the world are the person's own: a
+// repair that overwrote them would be a repair that cost someone a world.
+func (a *App) repairServer(srv *store.Server, dryRun, force bool) int {
+	name := srv.Name
+	eff, err := a.effectiveVersion(srv.Version)
+	if err != nil {
+		return a.fatal(err)
+	}
+	o := a.serverOptions(srv, eff, srv.Version)
+	item, ok := mcserver.JarItem(o, a.Mapper())
+	if !ok {
+		return a.fatal(fmt.Errorf("%s", i18n.T("srv.need_jar", srv.Version, name)))
+	}
+	jar := mcserver.JarPath(o)
+
+	needed, corrupt := false, false
+	if force {
+		needed = true
+	} else if info, err := os.Stat(jar); err != nil {
+		needed = true
+	} else if got, err := sha1File(jar); err != nil || got != item.SHA1 {
+		needed, corrupt = true, true
+	} else {
+		_ = info
+	}
+
+	switch {
+	case !needed:
+		a.Log.Printf("%s", i18n.T("doc.repair_srv_none", name, humanBytes(item.Size)))
+		return 0
+	case corrupt && !force:
+		a.Log.Printf("%s", i18n.T("doc.repair_srv_corrupt", name, humanBytes(item.Size)))
+	default:
+		a.Log.Printf("%s", i18n.T("doc.repair_srv_plan", name, jar, humanBytes(item.Size)))
+	}
+	if dryRun {
+		a.Log.Printf("%s", i18n.T("mcv.dry_run"))
+		return 0
+	}
+	if !a.Yeseverything {
+		ok, err := a.confirmBatch(name, 1, item.Size)
+		if err != nil {
+			return a.fatal(err)
+		}
+		if !ok {
+			return a.fatal(fmt.Errorf("%s", i18n.T("dl.declined", name)))
+		}
+	}
+	if force {
+		// A forced repair replaces the file outright rather than trusting a size
+		// match, which is the point of asking for it.
+		if err := os.Remove(jar); err != nil && !os.IsNotExist(err) {
+			return a.fatal(err)
+		}
+	}
+	if err := dl.FetchAll(a.Policy(), []dl.Item{item}, 1, a.Log); err != nil {
+		return a.fatal(err)
+	}
+	if info, err := os.Stat(jar); err == nil {
+		a.Log.Printf("%s", i18n.T("doc.repair_srv_ok", name, humanBytes(info.Size())))
+	}
+	return 0
 }

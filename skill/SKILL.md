@@ -119,6 +119,11 @@ small steps as each piece passes.
 - **Ask the version JSON what an instance is** (`Version.GameVersion()`,
   `Version.Loader()`), never its name or id: another launcher writes its own id, keeps
   the game version in `clientVersion` and names its loader only through libraries.
+- **`doctor` reports, `repair` owns only what mcli fetches.** Every installed thing
+  gets checked — a version's files, a server's jar against the published checksum,
+  its EULA, its port, its last log — and `repair` puts back exactly those files. For a
+  server that is the jar: `eula.txt`, `server.properties` and the world belong to the
+  person running it and are never written.
 - **Docs ship in both languages in the same commit**, and `docs/status.md` says what
   was *run* versus merely compiled.
 

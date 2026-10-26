@@ -68,6 +68,23 @@ Caveat worth remembering: commands written before the server's dispatcher is up 
 answered with `An unexpected error occurred while trying to execute that command`, so
 mcli waits for the server's own `Done (` line before forwarding anything.
 
+## A server's own health (doctor and repair)
+
+```sh
+mv .../servers/mc-test/server.jar /tmp/keep
+./mcli doctor mc-test                     # names the jar, its expected size, exit 1
+./mcli repair mc-test --yes               # fetches the jar, and nothing else
+printf 'eula=false\n' > .../servers/mc-test/eula.txt
+./mcli doctor mc-test                     # reports the refused EULA with the URL
+./mcli repair mc-test --yes               # must leave eula.txt exactly as it is
+./mcli server create portclash --version 26.3 --port <same port> --eula --yes
+./mcli doctor mc-test                     # names the other server on that port
+```
+
+Expect: the jar is checked against the checksum the version publishes (not just its
+size), a killed detached server shows up as a stale pid, `doctor --all` covers servers
+as well as instances, and repair writes only the jar.
+
 ## Fabric and other-launcher profiles
 
 ```sh

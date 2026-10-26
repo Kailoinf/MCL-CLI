@@ -21,8 +21,8 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 | `mcli instance [list \| show <name> \| set <name> [--loader vanilla\|fabric] [--loader-version <v>] … \| copy <src> <dst> [--with-files] \| rename <old> <new> \| scan [--all] \| import <version> [--as <name>]]` | inspect and change instances, adopt existing installs |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance |
 | `mcli update [<instance>] [--version <v>] [--loader vanilla\|fabric] [--loader-version <v>] [--pack] [--pack-version <v>] [--dry-run] [--force]` | move an instance to another game version (newest release by default), or with `--pack` to a newer version of its modpack; keeps the loader, the settings and the files |
-| `mcli doctor [<name>] [--all] [--deep]` | health check; exits 1 when something is wrong |
-| `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the missing or damaged files |
+| `mcli doctor [<name>] [--all] [--deep]` | health check of the machine, of every instance, and of a server (jar against the version's checksum, EULA, port, last log); exits 1 when something is wrong |
+| `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the missing or damaged files; for a server, its jar — never `eula.txt`, `server.properties` or the world |
 | `mcli refresh [--versions] [--all]` | force-refresh cached metadata |
 
 ## Servers

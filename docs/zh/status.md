@@ -79,6 +79,14 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* 服务端也进了 `doctor` 与 `repair`。`doctor <服务端>` 会检查：jar 与版本发布的校验和是否一致、
+  `eula.txt`、`server.properties`（以及是否与另一个 mcli 服务端配置了同一端口）、该版本需要的 Java、
+  记录里那个已经不在运行的 pid、以及最近一次日志的结尾。逐条实测过：jar 被移走时会报出缺失与期望大小
+  并以退出码 1 结束；EULA 未被接受时会带上网址报出来；`repair --yes` 不会把 `eula.txt` 改成 true
+  （它只拥有 jar）；第二台同端口的服务器会被点名；被 `-9` 杀掉的后台服务器会以「过期 pid」出现；
+  `doctor --all` 同时覆盖服务端与实例。
+* `repair <服务端>` 故意只取一个文件：`eula.txt`、`server.properties` 和存档都是用户自己的。一个会
+  覆写它们、把人存档搞没的「修复」不叫修复。
 * 操作手册（skill）按编写规范重写了一遍：原来是 429 行不断追加的教训，现在拆成 150 行的指南
   加上 `references/verification-recipes.md` 与 `references/service-facts.md`。它此前已经漂成
   一份日志（带日期的「已验证 …」记录）、这一页内容的第二份抄本，而且还自相矛盾 —— 其中一行仍写着

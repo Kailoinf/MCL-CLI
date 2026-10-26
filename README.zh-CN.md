@@ -93,10 +93,10 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli server start <名称> [--dry-run] [--detach] [--eula] [--port N]` | 缺少时下载服务端 jar 并启动；默认前台，控制台直接可用，Ctrl+C 会保存并停止 |
 | `mcli server attach <名称> [--lines N]` | 接上后台服务器的控制台，可直接输入命令（Ctrl+C 只是离开，服务器继续跑） |
 | `mcli server cmd <名称> <命令…>` | 往运行中的服务器控制台发一条命令 |
-| `mcli server stop <名称> [--force]` | 让后台运行的服务器退出：发送 SIGINT（等同 Ctrl+C），因此存档会被保存 |
+| `mcli server stop <名称> [--force]` | 用真正会保存存档的方式停止：mcli 把服务器自己的 `stop` 写进它的控制台并等待；`--force` 则直接结束 |
 | `mcli update [<名称>] [--version <版本>] [--loader vanilla\|fabric] [--pack] [--pack-version <版本>] [--dry-run]` | 把实例换到另一个游戏版本（`--pack` 则换它整合包的版本），保留加载器、设置与全部文件 |
-| `mcli doctor [<名称>] [--all] [--deep]` | 体检：本机环境（目录、Java、版本清单、日志）＋实例需要的每个文件；有问题时退出码 1 |
-| `mcli repair <名称> [--deep] [--force] [--dry-run]` | 只补齐 doctor 查出的缺失/损坏文件（--force 则按清单全部重下） |
+| `mcli doctor [<名称>] [--all] [--deep]` | 体检：本机环境（目录、Java、版本清单、日志）、实例需要的每个文件，以及服务端的 jar、EULA、端口与最近日志；有问题时退出码 1 |
+| `mcli repair <名称> [--deep] [--force] [--dry-run]` | 只补齐 doctor 查出的缺失/损坏文件（--force 则按清单全部重下）；对服务端只取它的 jar，别的一律不碰 |
 | `mcli delete <名称> [--keep-files] [--yes]` | 删除实例（连同存档） |
 | `mcli launch <名称>|<版本>|--last [--version <版本>] [--java <路径>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <账号>]` | 按需安装并启动 |
 | `mcli refresh [--versions] [--all]` | 强制刷新已缓存元数据 |
@@ -202,6 +202,7 @@ printf 'list\nstop\n' | mcli server start survival                   # 也可以
 * `--detach` 会后台启动。后台服务器的控制台输出在 `<dir>/logs/console.log`，服务器自己的日志在 `<dir>/logs/latest.log`。
 * **停止服务器要走它自己的控制台，而不是绕过它。** 无头 JVM 并没有启动器可以依赖的信号处理器：在本机实测，SIGINT 和 SIGTERM 都会让进程直接结束，它自己的日志里既没有 `Stopping server` 也没有 `Saving worlds` —— 存档只保留到最后一次自动保存为止。所以 `mcli server stop` 是往它的控制台写入服务器自己的 `stop` 命令，并等它保存完再关闭；`--force` 则直接结束，并如实说明这是强制结束。
 * pid 在服务器启动那一刻就记下（两种模式都一样），所以被误杀的 mcli 留下的服务器仍然能被 `server list` 看到、也仍然停得掉。前台运行时 mcli 也接管控制台，于是 Ctrl+C、`timeout` 的 SIGTERM、以及 `mcli server cmd <名称> stop` 都会在退出前保存存档。
+* `mcli doctor <服务端>` 检查服务端会出问题的那几处：jar 与版本发布的校验和是否一致、`eula.txt`、`server.properties` 里的端口（以及是否和另一个 mcli 服务端撞端口）、该版本需要的 Java、以及最近一次日志的结尾。`mcli repair <服务端>` 只取 jar，别的一律不碰 —— `eula.txt`、`server.properties` 和存档是你的，mcli 永不写它们。
 * Java 与客户端同一套规则：用版本 JSON 里的 `javaVersion.majorVersion`，缺了就由 mcli 安装。
 * `server attach` 依赖 FIFO（Linux / macOS）；其它系统会直接提示不支持，改用前台 `server start`。
 

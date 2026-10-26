@@ -75,6 +75,17 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* Servers are in `doctor` and `repair`. `doctor <server>` checks the jar against the
+  checksum the version publishes, `eula.txt`, `server.properties` (and whether another
+  mcli server claims the same port), the Java the version needs, a recorded pid that is
+  no longer running, and how the last log ended. Verified directly: a removed jar is
+  reported with its expected size and exit 1; a refused EULA is reported with the URL;
+  `repair --yes` leaves `eula.txt` at `eula=false` — it owns the jar and nothing else; a
+  second server configured on the same port is named; a detached server killed with
+  `-9` shows up as a stale pid; and `doctor --all` covers servers as well as instances.
+* `repair <server>` deliberately fetches one file: `eula.txt`, `server.properties` and
+  the world are the person's own. A repair that overwrote them would be a repair that
+  cost someone a world.
 * The working skill was rewritten into the shape the authoring guide asks for: 429
   lines of appended lessons became a 150-line guide plus
   `references/verification-recipes.md` and `references/service-facts.md`. It had

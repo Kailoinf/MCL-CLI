@@ -96,10 +96,10 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli server start <name> [--dry-run] [--detach] [--eula] [--port N]` | fetch the server jar if needed and start it; attached by default, so the console is yours and Ctrl+C saves and stops |
 | `mcli server attach <name> [--lines N]` | follow a detached server's console and type into it (Ctrl+C leaves the server running) |
 | `mcli server cmd <name> <command…>` | send one command into a running server's console |
-| `mcli server stop <name> [--force]` | ask a detached server to stop: it gets SIGINT, exactly what Ctrl+C would send, so the world is saved |
+| `mcli server stop <name> [--force]` | stop a server the way that saves its world: mcli writes the server's own `stop` into its console and waits; `--force` kills instead |
 | `mcli update [<name>] [--version <v>] [--loader vanilla\|fabric] [--pack] [--pack-version <v>] [--dry-run]` | move an instance to another game version (`--pack`: to a newer version of its modpack), keeping its loader, settings and files |
-| `mcli doctor [<name>] [--all] [--deep]` | health check: the machine (home, java, manifest, log) and every file an instance needs; exit 1 when something is wrong |
-| `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the files doctor found missing or damaged (`--force` re-downloads everything planned) |
+| `mcli doctor [<name>] [--all] [--deep]` | health check: the machine (home, java, manifest, log), every file an instance needs, and a server's jar, EULA, port and last log; exit 1 when something is wrong |
+| `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the files doctor found missing or damaged (`--force` re-downloads everything planned); for a server, its jar and nothing else |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance (and its saves) |
 | `mcli launch <name>|<version>|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
 | `mcli refresh [--versions] [--all]` | force-refresh cached metadata |
@@ -227,6 +227,11 @@ printf 'list\nstop\n' | mcli server start survival                   # or script
   left behind by a killed mcli is still visible to `server list` and stoppable.
   A foreground run gives mcli the console too, so Ctrl+C, `timeout`'s SIGTERM and
   `mcli server cmd <name> stop` all save the world on the way out.
+* `mcli doctor <server>` checks the parts a server can fail on: the jar against the
+  checksum the version publishes, `eula.txt`, the port in `server.properties` (and
+  whether another mcli server claims the same port), the Java the version needs, and
+  how the last log ended. `mcli repair <server>` fetches the jar and nothing else —
+  `eula.txt`, `server.properties` and the world are yours, and mcli never writes them.
 * Java comes from the same runtime rules as the client: the version's
   `javaVersion.majorVersion`, and mcli installs the runtime when it is missing.
 * `server attach` needs a FIFO for the server's stdin (Linux, macOS); elsewhere
