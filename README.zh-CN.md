@@ -16,7 +16,7 @@
 | 下载 | 优先 BMCLAPI 镜像，失败自动回退官方源；SHA-1 校验；失败重试；大文件先确认 |
 | 版本 | release / snapshot / old_beta / old_alpha；清单带 TTL 缓存；支持 inheritsFrom 合并与老版 minecraftArguments |
 | Java | 扫描本机 Java（PATH、JAVA_HOME、发行版目录、官方启动器的 runtime、mcli 自己的 jdk/），按版本所需主版本匹配；找不到可从镜像安装 |
-| 实例 | 多实例隔离，每个实例独立存档与设置；libraries / assets / versions 全局共享 |
+| 实例 | 多实例隔离，每个实例独立存档与设置；libraries / assets / versions 全局共享；随时用 `mcli instance` 修改、复制、改名 |
 | 界面 | 中英文双语，`--lang auto\|en\|zh` |
 | 日志 | 终端只显示要点，完整日志写入 `~/.mcl-cli/logs/` |
 
@@ -38,7 +38,7 @@ go build -o mcli .        # 需要 Go 1.24+（用了 crypto/pbkdf2 等新标准�
 ```sh
 mcli login                                   # 打开浏览器授权（可用 --flow device 走设备码）
 mcli list --available --limit 10             # 看能装哪些版本
-mcli create vanilla --version 1.21.4         # 建一个隔离实例
+mcli create vanilla --version latest         # 建一个隔离实例（latest | latest-snapshot | 具体版本号）
 mcli launch vanilla                          # 缺什么自动下载，然后启动游戏
 ```
 
@@ -46,8 +46,12 @@ mcli launch vanilla                          # 缺什么自动下载，然后启
 
 ```sh
 mcli launch vanilla --xmx 4G --width 1920 --height 1080 --dry-run   # 只看命令行
-mcli launch --last                            # 复用上次的启动参数
+mcli launch vanilla --xmx 4G --xms 1G        # 本次临时覆盖
+mcli launch --last                            # 复用上次的启动参数（直接 mcli launch 也一样）
+mcli launch 1.21.4                            # 也可以直接给版本号，会自动建实例
 mcli list                                     # 列出实例
+mcli instance set vanilla --xmx 6G            # 永久修改实例设置
+mcli instance show vanilla                    # 看这个实例实际会用哪些参数
 mcli config set log_level_terminal debug      # 改配置
 mcli java which 1.21.4                        # 这个版本需要/将使用哪个 Java
 ```
@@ -59,9 +63,14 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli login [--flow browser\|device] [--label <名称>] [--no-browser] [--timeout <秒>]` | 登录微软账号（默认浏览器流程） |
 | `mcli logout [<账号>] [--all]` | 清除已保存凭证 |
 | `mcli list [--instances] [--accounts] [--available] [--type <类型>] [--search <文本>] [--limit N]` | 列出实例、账号或可下载版本 |
-| `mcli create <名称> --version <版本> [--java <路径>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...]` | 创建实例 |
+| `mcli create <名称> --version <版本>|latest|latest-snapshot [--java <路径>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...] [--force]` | 创建实例 |
+| `mcli instance [list]` | 列出实例：版本、Java、就绪状态、上次启动、游戏目录 |
+| `mcli instance show <名称>` | 查看某个实例的全部设置 |
+| `mcli instance set <名称> [--version <版本>] [--java <路径>|auto] [--xmx 4G|auto] [--xms 1G|auto] [--jvm-arg ...] [--game-arg ...] [--clear-jvm-args] [--clear-game-args]` | 修改实例设置 |
+| `mcli instance copy <源> <目标> [--with-files]` | 复制实例（可连存档一起） |
+| `mcli instance rename <旧名> <新名>` | 实例改名，游戏目录一起搬 |
 | `mcli delete <名称> [--keep-files] [--yes]` | 删除实例（连同存档） |
-| `mcli launch <名称>\|--last [--version <版本>] [--java <路径>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <账号>]` | 按需安装并启动 |
+| `mcli launch <名称>|<版本>|--last [--version <版本>] [--java <路径>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <账号>]` | 按需安装并启动 |
 | `mcli refresh [--versions] [--all]` | 强制刷新已缓存元数据 |
 | `mcli config [get\|set\|unset\|list\|path]` | 读写设置 |
 | `mcli java [list \| install <major> \| which <版本>]` | 查看或安装 Java |

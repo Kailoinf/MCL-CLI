@@ -45,8 +45,18 @@ func (a *App) cmdLaunch(args []string) int {
 	// replays the same window size; explicit flags win below.
 	width, height := 0, 0
 	var base *store.Instance
+
+	lastFlag := f.boolean("last")
+	// `mcli launch` with nothing else to go on replays the previous launch:
+	// that is the whole point of remembering it.
+	if !lastFlag && len(f.args) == 0 && !f.has("version") {
+		if last, err := a.DB.Last(); err == nil && last != nil {
+			lastFlag = true
+			a.Log.Infof("%s", i18n.T("launch.no_target_last", last.Instance))
+		}
+	}
 	switch {
-	case f.boolean("last"):
+	case lastFlag:
 		last, err := a.DB.Last()
 		if err != nil {
 			return a.fatal(err)
@@ -70,7 +80,13 @@ func (a *App) cmdLaunch(args []string) int {
 		instName = f.args[0]
 		inst, ok := a.DB.GetInstance(instName)
 		if !ok {
-			return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", instName)))
+			// The name may be a version id: launchers let you start a version
+			// directly, so create the matching instance instead of refusing.
+			created, cerr := a.autoCreateInstance(instName)
+			if cerr != nil {
+				return a.fatal(cerr)
+			}
+			inst = created
 		}
 		base = inst
 		versionID = inst.Version
@@ -81,7 +97,11 @@ func (a *App) cmdLaunch(args []string) int {
 		base = &store.Instance{Name: instName}
 	}
 	if v := f.str("version", ""); v != "" {
-		versionID = v
+		resolved, err := a.resolveVersion(v)
+		if err != nil {
+			return a.fatal(err)
+		}
+		versionID = resolved
 	}
 	if versionID == "" {
 		return a.fatal(fmt.Errorf("%s", i18n.T("launch.no_source", instName)))

@@ -72,6 +72,8 @@ func run(argv []string) int {
 		return app.cmdConfig(args)
 	case "java", "jdk":
 		return app.cmdJava(args)
+	case "instance", "inst":
+		return app.cmdInstance(args)
 	default:
 		app.Log.Printf("%s", i18n.T("cli.unknown_command", command))
 		app.Log.Printf("%s", i18n.T("cli.usage"))
@@ -92,6 +94,7 @@ func printHelp(app *App, topic string) {
 		{"logout", "cli.cmd.logout.usage", "cli.cmd.logout.desc"},
 		{"list", "cli.cmd.list.usage", "cli.cmd.list.desc"},
 		{"create", "cli.cmd.create.usage", "cli.cmd.create.desc"},
+		{"instance", "cli.cmd.instance.usage", "cli.cmd.instance.desc"},
 		{"delete", "cli.cmd.delete.usage", "cli.cmd.delete.desc"},
 		{"launch", "cli.cmd.launch.usage", "cli.cmd.launch.desc"},
 		{"refresh", "cli.cmd.refresh.usage", "cli.cmd.refresh.desc"},

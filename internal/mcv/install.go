@@ -408,6 +408,11 @@ func libraryDest(libsDir string, d Download, l Library, classifier string) strin
 	return filepath.Join(libsDir, filepath.FromSlash(l.MavenPath(classifier)))
 }
 
+// AssetIndexName is the file name of this version's asset index, as stored in
+// assets/indexes. Exported so `mcli instance`/`mcli doctor` can check for it
+// without duplicating the fallback chain.
+func (v *Version) AssetIndexName() string { return assetIndexName(v) }
+
 func assetIndexName(v *Version) string {
 	if v.AssetIndex != nil {
 		if v.AssetIndex.Path != "" {

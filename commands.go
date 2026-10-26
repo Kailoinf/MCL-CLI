@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -199,27 +198,6 @@ func (a *App) cmdList(args []string) int {
 	return 0
 }
 
-func (a *App) listInstances() {
-	names := a.DB.InstanceNames()
-	if len(names) == 0 {
-		a.Log.Printf("%s", i18n.T("inst.no_instances"))
-		return
-	}
-	a.Log.Printf("%s", i18n.T("inst.list_header", "NAME", "VERSION", "JAVA", "LAST PLAYED", "GAME DIR"))
-	for _, n := range names {
-		inst := a.DB.Data.Instances[n]
-		jv := inst.Java
-		if jv == "" {
-			jv = "auto"
-		}
-		played := "-"
-		if !inst.LastPlayed.IsZero() {
-			played = inst.LastPlayed.Format("2006-01-02 15:04")
-		}
-		a.Log.Printf("%s", i18n.T("inst.list_row", inst.Name, inst.Version, jv, played, a.instanceDir(n)))
-	}
-}
-
 func (a *App) instanceDir(name string) string {
 	return filepath.Join(a.VersionsDir(), name)
 }
@@ -289,7 +267,10 @@ func (a *App) cmdCreate(args []string) int {
 	if _, exists := a.DB.GetInstance(name); exists && !f.boolean("force") {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.exists", name)))
 	}
-	version := f.str("version", "")
+	version, err := a.resolveVersion(f.str("version", ""))
+	if err != nil {
+		return a.fatal(err)
+	}
 	if version == "" {
 		return a.usageError("cli.missing_arg", "create", "--version")
 	}
@@ -599,9 +580,74 @@ func (a *App) javaWhich(args []string) int {
 	return 0
 }
 
-// sortedInstanceNames is a helper for tests and future commands.
-func (a *App) sortedInstanceNames() []string {
-	names := a.DB.InstanceNames()
-	sort.Strings(names)
-	return names
+func (a *App) listInstances() { a.instanceList() }
+
+// resolveVersion turns convenience aliases ("latest", "latest-snapshot") into a
+// concrete version id. Everything else is returned unchanged, so a plain
+// `mcli create x --version 1.21.4` still works offline.
+func (a *App) resolveVersion(id string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(id)) {
+	case "latest", "release", "latest-release", "stable":
+		man, err := a.ManifestStore().Get(false)
+		if err != nil {
+			return "", err
+		}
+		if man.Latest.Release == "" {
+			return "", fmt.Errorf("%s", i18n.T("inst.no_latest"))
+		}
+		a.Log.Infof("%s", i18n.T("inst.resolved", id, man.Latest.Release))
+		return man.Latest.Release, nil
+	case "snapshot", "latest-snapshot", "snap":
+		man, err := a.ManifestStore().Get(false)
+		if err != nil {
+			return "", err
+		}
+		if man.Latest.Snapshot == "" {
+			return "", fmt.Errorf("%s", i18n.T("inst.no_latest"))
+		}
+		a.Log.Infof("%s", i18n.T("inst.resolved", id, man.Latest.Snapshot))
+		return man.Latest.Snapshot, nil
+	}
+	return id, nil
+}
+
+// knownVersion rejects a version id that the manifest does not list. A manifest
+// that cannot be loaded is not an error here: being offline must not stop a
+// user from editing an instance.
+func (a *App) knownVersion(id string) error {
+	man, err := a.ManifestStore().Get(false)
+	if err != nil {
+		a.Log.Warnf("%s", err)
+		return nil
+	}
+	if _, ok := man.Find(id); !ok {
+		return fmt.Errorf("%s", i18n.T("inst.version_unknown", id))
+	}
+	return nil
+}
+
+// autoCreateInstance creates an instance named after a version id, so
+// `mcli launch 1.21.4` works without a separate `mcli create`.
+func (a *App) autoCreateInstance(name string) (*store.Instance, error) {
+	version, err := a.resolveVersion(name)
+	if err != nil {
+		return nil, err
+	}
+	if !instanceNameRe.MatchString(version) {
+		return nil, fmt.Errorf("%s", i18n.T("inst.bad_name", version))
+	}
+	man, err := a.ManifestStore().Get(false)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := man.Find(version); !ok {
+		return nil, fmt.Errorf("%s", i18n.T("launch.unknown_target", name, version, name))
+	}
+	inst := &store.Instance{Name: version, Version: version, CreatedAt: time.Now()}
+	a.DB.Data.Instances[version] = inst
+	if err := a.DB.Save(); err != nil {
+		return nil, err
+	}
+	a.Log.Printf("%s", i18n.T("launch.auto_create", version))
+	return inst, nil
 }

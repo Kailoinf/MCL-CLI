@@ -17,7 +17,7 @@ interactive wizard: everything is a flag.
 | Downloads | BMCLAPI mirror first, automatic fallback to the official Mojang source, SHA-1 verification, retries, large-download confirmation |
 | Versions | release / snapshot / old_beta / old_alpha, manifest cache with TTL, `inheritsFrom` merging, legacy `minecraftArguments` support |
 | Java | finds local runtimes (PATH, `JAVA_HOME`, distro dirs, `~/.minecraft/runtime`, mcli's own `jdk/`), matches the major version a version needs, can install a runtime from Mojang's mirrored product manifest |
-| Instances | multiple named instances, each with its own game directory, JVM args and memory settings; libraries/assets/versions are shared |
+| Instances | multiple named instances, each with its own game directory, JVM args and memory settings; libraries/assets/versions are shared; edit, clone and rename them later with `mcli instance` |
 | Interface | English and Simplified Chinese, `--lang auto\|en\|zh` |
 | Logs | concise terminal output, full log file under `~/.mcl-cli/logs/` |
 
@@ -40,7 +40,7 @@ Optionally `install -m755 mcli /usr/local/bin/mcli`.
 ```sh
 mcli login                                   # opens your browser (use --flow device for a code)
 mcli list --available --limit 10             # what can be installed
-mcli create vanilla --version 1.21.4         # isolated instance
+mcli create vanilla --version latest         # isolated instance (latest | latest-snapshot | a version id)
 mcli launch vanilla                          # installs what is missing, then starts the game
 ```
 
@@ -48,8 +48,12 @@ Everyday use:
 
 ```sh
 mcli launch vanilla --xmx 4G --width 1920 --height 1080 --dry-run   # see the exe command line
-mcli launch --last                            # replay the previous launch
+mcli launch vanilla --xmx 4G --xms 1G        # one-off overrides
+mcli launch --last                            # replay the previous launch (bare `mcli launch` does the same)
+mcli launch 1.21.4                            # a version id works too: the instance is created for you
 mcli list                                     # instances
+mcli instance set vanilla --xmx 6G            # change settings for good
+mcli instance show vanilla                    # what this instance will actually run with
 mcli config set bmclapi_endpoint https://bmclapi2.bangbang93.com
 mcli java which 1.21.4                        # which Java this version needs / will use
 ```
@@ -61,9 +65,14 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli login [--flow browser\|device] [--label <name>] [--no-browser] [--timeout <sec>]` | Microsoft login (browser flow by default) |
 | `mcli logout [<account>] [--all]` | remove stored credentials |
 | `mcli list [--instances] [--accounts] [--available] [--type <t>] [--search <text>] [--limit N]` | instances, accounts or downloadable versions |
-| `mcli create <name> --version <v> [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...]` | create an instance |
+| `mcli create <name> --version <v>|latest|latest-snapshot [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...] [--force]` | create an instance |
+| `mcli instance [list]` | instances with version, java, readiness, last played, game dir |
+| `mcli instance show <name>` | everything about one instance |
+| `mcli instance set <name> [--version <v>] [--java <path>|auto] [--xmx 4G|auto] [--xms 1G|auto] [--jvm-arg ...] [--game-arg ...] [--clear-jvm-args] [--clear-game-args]` | change an instance's settings |
+| `mcli instance copy <src> <dst> [--with-files]` | clone an instance (optionally its saves) |
+| `mcli instance rename <old> <new>` | rename an instance and its game directory |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance (and its saves) |
-| `mcli launch <name>\|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
+| `mcli launch <name>|<version>|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
 | `mcli refresh [--versions] [--all]` | force-refresh cached metadata |
 | `mcli config [get\|set\|unset\|list\|path]` | read or change settings |
 | `mcli java [list \| install <major> \| which <version>]` | inspect or install Java runtimes |

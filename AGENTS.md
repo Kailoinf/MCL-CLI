@@ -8,7 +8,8 @@ file in the same commit.
 ```
 main.go            dispatch, help, global flags        flags.go     argv parser
 app.go             shared context: paths, db, logger, confirm, auth helpers
-commands.go        login/logout/list/create/delete/refresh/config/java
+commands.go        login/logout/list/create/delete/refresh/config/java + version aliases
+instance_cmd.go    instance list/show/set/copy/rename (post-create settings)
 launch_cmd.go      launch command + java selection + placeholder drift check
 internal/i18n      every user-visible string (en + zh catalogs)
 internal/paths     ~/.mcl-cli layout (three TOML files, cache, jdk, logs)
@@ -102,10 +103,13 @@ Version 0.1.0. Remote `github.com/Kailoinf/MCL-CLI` is up to date with `main`
    `run`.
 3. Implement `func (a *App) cmdX(args []string) int` with
    `parseFlags("x", args, map[string]flagSpec{...})`; unknown options must stay
-   errors so typos cannot silently change behaviour.
+   errors so typos cannot silently change behaviour. Reject extra positionals
+   with `cli.unexpected_arg` — never ignore them silently.
 4. Return `a.fatal(err)` (exit 1) or `a.usageError("cli.missing_arg", …)`
    (exit 2). Print results with `a.Log.Printf`, diagnostics with `a.Log.Infof`….
-5. Tests: cover the parsing/decision logic, not the network.
+5. Sub-commands (`mcli instance set`) dispatch on `args[0]` and then call
+   `parseFlags` on the remainder; `-h/--help` is handled by the parser.
+6. Tests: cover the parsing/decision logic, not the network.
 
 ## Verified environment facts (2026-10, checked with curl from this machine)
 
