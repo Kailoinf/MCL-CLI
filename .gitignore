@@ -7,6 +7,9 @@
 # runtime data (never commit)
 .mcl-cli/
 .minecraft/
+mcli.toml
+state.toml
+last.toml
 mcli.db
 mcli.db.tmp
 *.log
