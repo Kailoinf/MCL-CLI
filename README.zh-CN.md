@@ -75,7 +75,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli logout [<账号>] [--all]` | 清除凭证（账号信息与两个令牌文件一起清） |
 | `mcli account [list \| use <名称\|UUID\|标签> \| remove <名称>]` | 查看与切换已登录账号 |
 | `mcli list [--instances] [--accounts] [--available] [--type <类型>] [--search <文本>] [--limit N]` | 列出实例、账号或可下载版本 |
-| `mcli create <名称> --version <版本>|latest|latest-snapshot [--java <路径>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...] [--force]` | 创建实例 |
+| `mcli create <名称> --version <版本>|latest|latest-snapshot [--loader vanilla\|fabric] [--loader-version <版本>] [--java <路径>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...] [--force]` | 创建实例（可选模组加载器） |
 | `mcli instance [list]` | 列出实例：版本、Java、就绪状态、上次启动、游戏目录 |
 | `mcli instance show <名称>` | 查看某个实例的全部设置 |
 | `mcli instance set <名称> [--version <版本>] [--java <路径>|auto] [--xmx 4G|auto] [--xms 1G|auto] [--jvm-arg ...] [--game-arg ...] [--clear-jvm-args] [--clear-game-args]` | 修改实例设置 |
@@ -84,7 +84,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli instance scan [--all]` | 列出磁盘上的版本目录：类型、JSON/JAR、父版本、是否已注册 |
 | `mcli instance import <版本> [--as <名称>] [--force]` | 接管已有安装（官方启动器 / PCL / HMCL / 整合包） |
 | `mcli fabric list <版本> [--limit N]` | 某个游戏版本可用的 Fabric 加载器列表 |
-| `mcli fabric install <版本> [<loader>] [--loader <版本>]` | 安装加载器 profile（默认最新稳定版） |
+| `mcli fabric list <版本> [--limit N]` | 列出某个游戏版本可用的 Fabric 加载器（安装走下面的 --loader 选项） |
 | `mcli server create <名称> --version <版本> [--java <路径>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <路径>] [--jvm-arg ...] [--eula]` | 注册服务器：独立目录、存档与端口；会打印 Minecraft EULA 并要求确认 |
 | `mcli server [list \| show <名称> \| set <名称> [--xmx] [--xms] [--port] [--java] [--version] \| delete <名称> [--keep-files] [--yes]]` | 查看与修改服务器 |
 | `mcli server start <名称> [--dry-run] [--detach] [--eula] [--port N]` | 缺少时下载服务端 jar 并启动；默认前台，控制台直接可用，Ctrl+C 会保存并停止 |
@@ -200,14 +200,19 @@ mcli server stop survival                                           # 只有 --d
 ## Fabric
 
 ```sh
-mcli fabric list latest          # 看某个游戏版本可用的加载器
-mcli fabric install latest       # 安装最新稳定加载器，写进 versions/
-mcli create modded --version latest --fabric
+mcli fabric list latest                                     # 看某个游戏版本可用的加载器
+mcli create modded --version latest --loader fabric          # 安装最新稳定加载器
+mcli create pinned --version latest --loader fabric --loader-version 0.16.9
+mcli instance set modded --loader vanilla                    # 也能切回原版
 ```
 
-Fabric 把加载器发布成一个「继承自游戏版本」的版本 JSON（`meta.fabricmc.net`），
-正好就是 mcli 能读的形态，所以安装加载器 = 取一份文档、写到版本加载器会去找的位置。
-之后这个实例的启动、修复、体检和普通版本完全一样。OptiFine / Forge / Quilt 暂不在范围内。
+模组加载器是**版本上的一个选项**，不是单独一条命令：`create` 与 `instance set` 上的
+`--loader vanilla|fabric`（配 `--loader-version` 固定某个构建），这也是让已有实例变成
+可加模组、或切回原版的方式。Fabric 把加载器发布成一个「继承自游戏版本」的版本 JSON
+（`meta.fabricmc.net`），正好是 mcli 能读的形态，所以安装 = 取一份文档、写到版本加载器
+会去找的位置；之后启动、修复、体检和普通版本完全一样。`mcli fabric list <版本>` 负责发现：
+有哪些 loader 构建可用。OptiFine / Forge / Quilt / NeoForge 暂不支持，`--loader` 会直接
+报错而不是乱猜。
 
 ## 镜像行为
 

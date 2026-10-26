@@ -17,8 +17,12 @@ and the maintainer approves every edit.
 3. Never print secrets — show paths, lengths or counts instead.
 4. `gofmt -l .` empty, `go vet ./...` clean, `go test ./...` green before every
    commit; commit and push in small working steps rather than batches.
-5. Docs ship with the code: README.md, README.zh-CN.md and `docs/*` must match
-   what was just written.
+5. Docs ship with the code, **in both languages, in the same commit**: README.md
+   and README.zh-CN.md, and every page of the `docs/` site (English at
+   `docs/<page>.md`, Chinese at `docs/zh/<page>.md`). A page that exists in one
+   language only is a bug: the site has a locale switcher and it must not land on
+   a 404. Update the Chinese page whenever the English one changes, and read both
+   before committing.
 6. `mcli doctor` never writes, and `mcli repair` fixes exactly what doctor
    reported — both come from one shared plan, so they cannot disagree.
 7. Anything that can run to thousands of lines on a real machine is capped or

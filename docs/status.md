@@ -74,6 +74,22 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* The mod loader became a **choice on the version** rather than a second positional
+  and a command of its own: `mcli create <name> --version <v> --loader vanilla|fabric
+  [--loader-version <v>]` and the same pair on `mcli instance set`, with
+  `mcli fabric list <game>` left as discovery. `fabric install` is gone. The
+  reasoning is the standard one — one positional for the thing the command acts on,
+  everything else a flag with a closed set of values (GNU long options; clap's
+  ValueEnum; CMCL hangs the loader off its version command, Fabric's own installer
+  takes `-loader`) — and an unknown value exits 2 listing the alternatives.
+* Verified round trip: `create mf --version 1.21.4 --loader fabric` installed
+  profile 0.20.1 and pointed the instance at `fabric-loader-0.20.1-1.21.4`
+  (dry-run: 69 classpath entries, `KnotClient`, `fabric-loader-0.20.1.jar`);
+  `instance set modtest --loader fabric` moved an existing instance onto the
+  profile and `--loader vanilla` moved it back to `1.21.4`. Real testing also
+  caught a bug the unit tests could not: an empty `--loader-version` did not mean
+  "newest stable" (the profile URL came out with a blank build and got a 404), so
+  `isLatest` now accepts the empty string and a test pins that.
 * A real server, start to stop, on this box (which is exactly what a headless
   machine can still verify end to end): `server create mc-test --version 26.3
   --port 25566 --eula` printed the EULA URL, wrote `eula.txt` and
@@ -91,7 +107,7 @@ and what is left. Update it in the same commit as the work.
 * Fabric, against the loader PCL had already installed on the same machine:
   `fabric list 26.3` reported 255 builds with 0.20.1 newest stable, `fabric
   install 26.3` wrote `versions/fabric-loader-0.20.1-26.3/fabric-loader-0.20.1-26.3.json`,
-  and `create fab2 --version 26.3 --fabric` produced an instance whose dry-run
+  and `create fab2 --version 26.3 --loader fabric` produced an instance whose dry-run
   command line has `KnotClient`, `-DFabricMcEmu= net.minecraft.client.main.Main `
   verbatim, the parent's `26.3/26.3.jar` and **62** classpath entries. The entry
   list is byte-identical to the one mcli builds for PCL's own

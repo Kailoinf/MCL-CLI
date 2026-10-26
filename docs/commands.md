@@ -16,9 +16,9 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 | Command | What it does |
 | --- | --- |
 | `mcli list [--instances] [--accounts] [--available] [--type <t>] [--search <text>] [--limit N]` | instances, accounts or downloadable versions |
-| `mcli create <name> --version <v> [--fabric] [--loader <v>] [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg …] [--game-arg …] [--force]` | create an instance, optionally on a Fabric loader |
+| `mcli create <name> --version <v> [--loader vanilla\|fabric] [--loader-version <v>] [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg …] [--game-arg …] [--force]` | create an instance, optionally on a mod loader |
 | `mcli launch <name>\|<version>\|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
-| `mcli instance [list \| show <name> \| set <name> … \| copy <src> <dst> [--with-files] \| rename <old> <new> \| scan [--all] \| import <version> [--as <name>]]` | inspect and change instances, adopt existing installs |
+| `mcli instance [list \| show <name> \| set <name> [--loader vanilla\|fabric] [--loader-version <v>] … \| copy <src> <dst> [--with-files] \| rename <old> <new> \| scan [--all] \| import <version> [--as <name>]]` | inspect and change instances, adopt existing installs |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance |
 | `mcli doctor [<name>] [--all] [--deep]` | health check; exits 1 when something is wrong |
 | `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the missing or damaged files |
@@ -40,7 +40,7 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 | Command | What it does |
 | --- | --- |
 | `mcli fabric list <game> [--limit N]` | loader builds published for a game version |
-| `mcli fabric install <game> [<loader>] [--loader <v>]` | install a loader profile |
+| `mcli fabric list <game> [--limit N]` | the loader builds Fabric publishes (installing is `create --loader fabric`) |
 
 ## Java and configuration
 

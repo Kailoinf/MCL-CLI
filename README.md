@@ -78,7 +78,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli logout [<account>] [--all]` | remove stored credentials (identity and both token files) |
 | `mcli account [list \| use <name\|uuid\|label> \| remove <name>]` | show and switch the logged-in accounts |
 | `mcli list [--instances] [--accounts] [--available] [--type <t>] [--search <text>] [--limit N]` | instances, accounts or downloadable versions |
-| `mcli create <name> --version <v>|latest|latest-snapshot [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...] [--force]` | create an instance |
+| `mcli create <name> --version <v>|latest|latest-snapshot [--loader vanilla\|fabric] [--loader-version <v>] [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...] [--force]` | create an instance, optionally on a mod loader |
 | `mcli instance [list]` | instances with version, java, readiness, last played, game dir |
 | `mcli instance show <name>` | everything about one instance |
 | `mcli instance set <name> [--version <v>] [--java <path>|auto] [--xmx 4G|auto] [--xms 1G|auto] [--jvm-arg ...] [--game-arg ...] [--clear-jvm-args] [--clear-game-args]` | change an instance's settings |
@@ -87,7 +87,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli instance scan [--all]` | version directories found on disk, with their type, jar, parent and instance |
 | `mcli instance import <version> [--as <name>] [--force]` | adopt an existing install (official launcher, PCL, HMCL, a modded profile) |
 | `mcli fabric list <game> [--limit N]` | the Fabric loader builds published for a game version |
-| `mcli fabric install <game> [<loader>] [--loader <v>]` | install a loader profile (newest stable by default) |
+| `mcli fabric list <game> [--limit N]` | the loader builds Fabric publishes for a game version (installing is the `--loader` choice below) |
 | `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg ...] [--eula]` | register a server: its own directory, world and port; the Minecraft EULA is printed and has to be accepted |
 | `mcli server [list \| show <name> \| set <name> [--xmx] [--xms] [--port] [--java] [--version] \| delete <name> [--keep-files] [--yes]]` | inspect and change servers |
 | `mcli server start <name> [--dry-run] [--detach] [--eula] [--port N]` | fetch the server jar if needed and start it; attached by default, so the console is yours and Ctrl+C saves and stops |
@@ -221,16 +221,22 @@ mcli server stop survival                                           # only neede
 ## Fabric
 
 ```sh
-mcli fabric list latest          # loader builds for a game version
-mcli fabric install latest       # newest stable loader, written into versions/
-mcli create modded --version latest --fabric
+mcli fabric list latest                                     # loader builds for a game version
+mcli create modded --version latest --loader fabric         # newest stable loader
+mcli create pinned --version latest --loader fabric --loader-version 0.16.9
+mcli instance set modded --loader vanilla                    # and back again
 ```
 
-Fabric publishes its loader as a version JSON that inherits from the game version
-(`meta.fabricmc.net`), which is exactly the shape mcli reads, so installing a
-loader is fetching one document and writing it where the version loader looks.
-After that the instance launches, repairs and diagnoses like any other. mcli does
-**not** install OptiFine, Forge or Quilt — those are out of scope for now.
+The mod loader is a **choice on the version**, not a separate command: `--loader
+vanilla|fabric` (with `--loader-version` to pin a build) on `create` and on
+`instance set`, which is also how an existing instance becomes moddable or goes
+back to vanilla. Fabric publishes its loader as a version JSON that inherits from
+the game version (`meta.fabricmc.net`) — exactly the shape mcli reads — so
+installing one is fetching a document and writing it where the version loader
+looks. After that the instance launches, repairs and diagnoses like any other.
+`mcli fabric list <game>` is the discovery half: which loader builds exist.
+OptiFine, Forge, Quilt and NeoForge are not supported yet, and the `--loader`
+choice says so instead of guessing.
 
 ## Mirror behaviour
 

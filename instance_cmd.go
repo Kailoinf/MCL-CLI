@@ -261,6 +261,8 @@ func (a *App) instanceSet(args []string) int {
 		"game-arg":        {takesValue: true, list: true},
 		"clear-jvm-args":  {},
 		"clear-game-args": {},
+		"loader":          {takesValue: true},
+		"loader-version":  {takesValue: true},
 	})
 	if err != nil {
 		return a.fatal(err)
@@ -298,6 +300,30 @@ func (a *App) instanceSet(args []string) int {
 		}
 		inst.Version = version
 		changed = append(changed, "version="+version)
+	}
+	// --loader is the same choice create takes: it is how an existing instance
+	// becomes moddable (or stops being), without touching anything else.
+	if f.has("loader") {
+		loader, err := parseLoader(f.str("loader", ""))
+		if err != nil {
+			return a.usageError("loader.bad", f.str("loader", ""), loaderChoices())
+		}
+		target, err := a.ensureLoaderTarget(versionRef{id: inst.Version}, loader, f.str("loader-version", ""))
+		if err != nil {
+			return a.fatal(err)
+		}
+		if target != "" {
+			inst.Version = target
+			changed = append(changed, "version="+target)
+		} else if loader == loaderVanilla && loaderOfVersionID(inst.Version) != loaderVanilla {
+			// ensureLoaderTarget returned the game version it inherits
+			game, err := a.baseGameVersion(inst.Version)
+			if err != nil {
+				return a.fatal(err)
+			}
+			inst.Version = game
+			changed = append(changed, "version="+game)
+		}
 	}
 	if f.has("java") {
 		value := autoValue(f.str("java", ""))

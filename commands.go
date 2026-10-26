@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Kailoinf/MCL-CLI/internal/auth"
-	"github.com/Kailoinf/MCL-CLI/internal/fabric"
 	"github.com/Kailoinf/MCL-CLI/internal/i18n"
 	"github.com/Kailoinf/MCL-CLI/internal/java"
 	"github.com/Kailoinf/MCL-CLI/internal/launch"
@@ -255,15 +254,15 @@ var _ = 0
 
 func (a *App) cmdCreate(args []string) int {
 	f, err := parseFlags("create", args, map[string]flagSpec{
-		"version":  {takesValue: true},
-		"java":     {takesValue: true},
-		"xmx":      {takesValue: true},
-		"xms":      {takesValue: true},
-		"jvm-arg":  {takesValue: true, list: true},
-		"game-arg": {takesValue: true, list: true},
-		"fabric":   {},
-		"loader":   {takesValue: true},
-		"force":    {},
+		"version":        {takesValue: true},
+		"java":           {takesValue: true},
+		"xmx":            {takesValue: true},
+		"xms":            {takesValue: true},
+		"jvm-arg":        {takesValue: true, list: true},
+		"game-arg":       {takesValue: true, list: true},
+		"loader":         {takesValue: true},
+		"loader-version": {takesValue: true},
+		"force":          {},
 	})
 	if err != nil {
 		return a.fatal(err)
@@ -297,24 +296,17 @@ func (a *App) cmdCreate(args []string) int {
 			return a.fatal(fmt.Errorf("%s", i18n.T("inst.version_unknown", version)))
 		}
 	}
-	// --fabric turns the game version into a loader profile: Fabric publishes it,
-	// mcli installs it, and the instance then points at the profile's own id.
-	if f.boolean("fabric") {
-		loader := f.str("loader", "")
-		if loader == "" || isLatest(loader) {
-			entry, err := fabric.Latest(a.Policy(), version)
-			if err != nil {
-				return a.fatal(fmt.Errorf("%s", i18n.T("fab.no_loaders", version, err)))
-			}
-			a.Log.Infof("%s", i18n.T("fab.latest_resolved", version, entry.Loader.Version))
-			loader = entry.Loader.Version
-		}
-		a.Log.Printf("%s", i18n.T("fab.installing", version, loader))
-		id, err := fabric.Install(a.Policy(), a.VersionsDir(), version, loader, a.Log)
-		if err != nil {
-			return a.fatal(err)
-		}
-		a.Log.Printf("%s", i18n.T("fab.installed", id, id))
+	// --loader is a choice, and a loader belongs to the version rather than to the
+	// command: Fabric publishes a profile that inherits the game version, and the
+	// instance then runs that profile. `--loader vanilla` is the default and undoes
+	// nothing, which keeps the common case flag-free.
+	loader, err := parseLoader(f.str("loader", "vanilla"))
+	if err != nil {
+		return a.usageError("loader.bad", f.str("loader", ""), loaderChoices())
+	}
+	if id, err := a.ensureLoaderTarget(versionRef{id: version}, loader, f.str("loader-version", "")); err != nil {
+		return a.fatal(err)
+	} else if id != "" {
 		version = id
 	}
 	if err := launch.ValidateMemory(f.str("xmx", "")); err != nil {

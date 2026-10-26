@@ -74,11 +74,15 @@ notice).
 ## Fabric
 
 ```sh
-mcli fabric list latest                 # loader builds for a game version
-mcli fabric install latest              # installs the newest stable loader
-mcli create modded --version latest --fabric
+mcli fabric list latest                                     # loader builds for a game version
+mcli create modded --version latest --loader fabric         # newest stable loader
+mcli create pinned --version latest --loader fabric --loader-version 0.16.9
+mcli instance set modded --loader vanilla                    # and back to vanilla
 ```
 
-The profile Fabric publishes is written into mcli's own `versions/` directory,
-so it works offline afterwards and can be launched, repaired and diagnosed like
-any other version.
+The loader is a **choice on the version**, not a command of its own: `--loader
+vanilla|fabric` on `create` and `instance set`, with `--loader-version` when you
+want a specific build. A value outside the choice is an error that lists the
+alternatives, never a silent fallback. The profile Fabric publishes is written
+into mcli's own `versions/` directory, so it works offline afterwards and can be
+launched, repaired and diagnosed like any other version.

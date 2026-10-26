@@ -219,10 +219,10 @@ commands written before the console thread exists are lost.
 Fabric, verified against the loader PCL installed on the same machine:
 
 ```sh
-./mcli fabric list 26.3                     # -> 0.20.1 stable, 255 builds listed
-./mcli fabric install 26.3                  # writes versions/fabric-loader-0.20.1-26.3/
-./mcli create fab --version 26.3 --fabric   # or the one-shot form
-./mcli launch fab --dry-run --yes           # 62 classpath entries, KnotClient, -DFabricMcEmu verbatim
+./mcli fabric list 26.3                                        # -> 0.20.1 stable, 255 builds listed
+./mcli create fab --version 26.3 --loader fabric               # writes versions/fabric-loader-0.20.1-26.3/
+./mcli instance set fab --loader vanilla                        # and back again
+./mcli launch fab --dry-run --yes                               # classpath with fabric-loader, KnotClient, -DFabricMcEmu verbatim
 ```
 
 The classpath must contain `net/fabricmc/fabric-loader`, `sponge-mixin` and the
@@ -272,7 +272,7 @@ first public version is the smallest (client 0 MB, assets ~50 MB).
 
 `docs/status.md` carries the ordered plan. Server-side launch and Fabric loader
 installation are done (`mcli server create/list/show/set/delete/start/stop/attach/cmd`,
-`mcli fabric list/install`, `mcli create --fabric`); what is left is
+`mcli create|instance set --loader vanilla|fabric`, `mcli fabric list`); what is left is
 mod/resource-pack search (Modrinth/CurseForge, mirroring what PCL and Console
 Minecraft Launcher do — keep the search itself thin; installing a hit into the
 right instance is the real work).

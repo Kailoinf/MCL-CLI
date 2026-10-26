@@ -28,7 +28,7 @@ features:
   - title: Servers
     details: "`mcli server` installs a server jar, writes eula.txt and server.properties, runs it attached or detached, and lets you attach to a running console."
   - title: Fabric
-    details: "`mcli fabric install` fetches the loader profile Fabric publishes, so instances with mods work — including the ones another launcher set up."
+    details: "The loader is a choice on the version: `--loader fabric` on `create` and `instance set` fetches the profile Fabric publishes, so instances with mods work — including the ones another launcher set up."
 ---
 
 ## What it looks like
@@ -41,7 +41,7 @@ mcli doctor --all                          # is anything missing or damaged?
 mcli server create survival --version latest --eula
 mcli server start survival --detach
 mcli server attach survival                # its console, without stopping it
-mcli fabric install — then: mcli create modded --version latest --fabric
+mcli create modded --version latest --loader fabric   # or --loader vanilla
 ```
 
 Everything is a flag; nothing is a wizard. See [the guide](/guide) for the full

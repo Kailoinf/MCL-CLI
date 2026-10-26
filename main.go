@@ -80,6 +80,12 @@ func run(argv []string) int {
 		return app.cmdServer(args)
 	case "fabric", "fab":
 		return app.cmdFabric(args)
+	case "search", "find":
+		return app.cmdSearch(args)
+	case "add":
+		return app.cmdAdd(args)
+	case "mods":
+		return app.cmdMods(args)
 	case "doctor":
 		return app.cmdDoctor(args)
 	case "repair", "fix":
@@ -108,6 +114,9 @@ func printHelp(app *App, topic string) {
 		{"instance", "cli.cmd.instance.usage", "cli.cmd.instance.desc"},
 		{"server", "cli.cmd.server.usage", "cli.cmd.server.desc"},
 		{"fabric", "cli.cmd.fabric.usage", "cli.cmd.fabric.desc"},
+		{"search", "cli.cmd.search.usage", "cli.cmd.search.desc"},
+		{"add", "cli.cmd.add.usage", "cli.cmd.add.desc"},
+		{"mods", "cli.cmd.mods.usage", "cli.cmd.mods.desc"},
 		{"doctor", "cli.cmd.doctor.usage", "cli.cmd.doctor.desc"},
 		{"repair", "cli.cmd.repair.usage", "cli.cmd.repair.desc"},
 		{"delete", "cli.cmd.delete.usage", "cli.cmd.delete.desc"},

@@ -33,9 +33,9 @@ EULA 不会替你同意：先打印 `https://aka.ms/MinecraftEULA`，再要求�
 ## Fabric
 
 ```sh
-mcli fabric list latest         # 查看某个游戏版本可用的加载器
-mcli fabric install latest      # 安装最新稳定加载器
-mcli create modded --version latest --fabric
+mcli fabric list latest                                      # 查看某个游戏版本可用的加载器
+mcli create modded --version latest --loader fabric          # 安装最新稳定加载器
+mcli instance set modded --loader vanilla                     # 也能切回原版
 ```
 
 ## 英文文档
