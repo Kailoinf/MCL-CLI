@@ -72,6 +72,81 @@ and what is left. Update it in the same commit as the work.
   unpacked into scratch and all homes used for testing live under
   `/root/.hermes/cache/scratch/` (`mtest`, `mtest2`, `mcuser-home`).
 
+## Service facts (verified with real requests, 2026-10)
+
+* `bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json` can answer 302 to a
+  `*.sakura.sld.tw` node that stalls; the official `piston-meta.mojang.com` copy
+  is the reliable fallback. Every download is therefore a candidate list and `dl`
+  keeps its 20 s stall watchdog — do not remove the official fallback.
+* BMCLAPI serves `/version/<id>/json` and `/version/<id>/client`, mirrors
+  `piston-meta`/`piston-data` paths verbatim, maven libraries at `/maven/<path>`,
+  asset objects at `/assets/<first2>/<hash>`, and Forge maven under `/maven`.
+  There is **no** `/assets/indexes/<id>.json` (404) — use
+  `/v1/packages/<sha1>/<id>.json`. `/java/list` is 403: do not build on it.
+* Libraries on other hosts (`maven.fabricmc.net`, `maven.minecraftforge.net`)
+  pass through to their official URL untouched; only Mojang hosts are mirrored.
+* Mojang's java runtime product manifest
+  (`launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96…/all.json`) is
+  mirrored by BMCLAPI, keyed by platform (`linux`, `linux-i386`, `windows-x64`,
+  `mac-os`, `mac-os-arm64`, …) then component. Each component manifest lists
+  `files` with `type: file|directory|link`, `executable` and `downloads.raw`
+  (sha1/size/url on piston-data). Components seen: `jre-legacy`=8,
+  `java-runtime-alpha`=16, `-beta`/`-gamma`=17, `-delta`=21, `-epsilon`=25.
+* Version JSON: modern documents carry `arguments.jvm`/`arguments.game` (a string
+  or `{rules, value}`), `javaVersion.{component,majorVersion}` and natives as
+  separate libraries named `…:natives-linux`; old ones carry
+  `minecraftArguments`, a `natives` map and `downloads.classifiers`. Both paths
+  must keep working. The current release line (`26.3`, snapshot `26.4-snapshot-5`)
+  needs **Java 25**; `javaVersion.majorVersion` is authoritative.
+* Login is a two-flow affair and that is not cosmetic: the browser flow (default)
+  uses `login.live.com/oauth20_authorize.srf` with `response_type=code`, a loopback
+  server on 29116-29126 and `login.live.com/oauth20_token.srf` for the exchange —
+  no client secret, no PKCE. The device flow uses
+  `login.microsoftonline.com/consumers/oauth2/v2.0/devicecode`. The reference
+  launcher's client id (`288ec5dd-6736-4d4b-9b96-30e083a8cad2`) is accepted by
+  Microsoft but answers `AADSTS9002346` ("not configured for the device code
+  flow"), and `00000000402b5328` is gone (`AADSTS700016`) — hence the browser
+  flow is the default and `auth_client_id` is configurable.
+* Xbox Live chain: `user.auth.xboxlive.com/user/authenticate`,
+  `xsts.auth.xboxlive.com/xsts/authorize`,
+  `api.minecraftservices.com/authentication/login_with_xbox`,
+  `/minecraft/profile`. XSTS codes worth translating: 2148916233 (no Xbox
+  profile), 2148916235 (region), 2148916238 (child account).
+
+## Manual recipes that worked
+
+```sh
+# isolated home — never point a run at the real ~/.mcl-cli
+export MCLI_HOME=/root/.hermes/cache/scratch/mtest2/home
+export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
+
+./mcli version && ./mcli help && ./mcli config path
+./mcli list --available --limit 5
+./mcli create demo --version 1.21.4 --force        # --force skips the manifest
+./mcli instance set demo --xmx 4G --jvm-arg=-XX:+UseG1GC
+./mcli instance show demo && ./mcli instance list
+./mcli instance copy demo clone --with-files && ./mcli instance rename clone renamed
+./mcli launch demo --dry-run --yes                 # inspect the java command line
+./mcli java which 1.21.4                           # -> 21
+```
+
+* Browser login without an account (proves the loopback + exchange wiring): start
+  `./mcli login --no-browser --timeout 25` in the background, read the port out of
+  the printed `redirect_uri`, then
+  `curl "http://localhost:<port>/authentication-response?code=FAKE"`. Expect the
+  callback page and Microsoft's `invalid_grant` for the fake code.
+* Real installs: `./mcli create tiny --version rd-132211 && ./mcli launch tiny --yes`
+  installs a Java runtime plus the smallest possible version, then stops with
+  "no account is logged in" — the expected end of the run. Reuse `MCLI_HOME` and
+  the second run is instant.
+* Adopting a real install: `7za x .minecraft.7z` into a scratch directory, point
+  `MCLI_MINECRAFT` at the unpacked `.minecraft`, then `instance scan` →
+  `instance import "<name>"` → `launch "<name>" --dry-run --yes`.
+* Check a dry-run command line for: classpath ending with the client jar, the
+  log4j argument before `-cp`, `-Djava.library.path` and the natives
+  subdirectories, `--gameDir` pointing at the instance, `--assetIndex` matching
+  the version's asset id.
+
 ## Environment quirks worth remembering
 
 * BMCLAPI answers 302 to `*.sakura.sld.tw` nodes that stall with
@@ -107,7 +182,3 @@ and what is left. Update it in the same commit as the work.
    instance's files without touching saves).
 5. **Windows pass**: run the scan/import/dry-run chain on the maintainer's
    machine (UCRT64) and fix whatever path handling surfaces.
-6. **AGENTS.md trim** — it still carries the old v0.1.0 handoff note and the
-   "three TOML documents" description. It is a protected file: the maintainer
-   has to approve the edit. Keep the rules and the code map there, keep the live
-   state here.
