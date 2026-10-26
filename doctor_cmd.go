@@ -517,10 +517,10 @@ func (a *App) doctorServer(name string) int {
 	eulaPath := filepath.Join(dir, "eula.txt")
 	switch _, err := os.ReadFile(eulaPath); {
 	case err != nil:
-		a.Log.Printf("%s", i18n.T("doc.srv_eula_missing", mcserver.EulaURL))
+		a.Log.Printf("%s", i18n.T("doc.srv_eula_missing", mcserver.EulaURL, name))
 		problems++
 	case !mcserver.EulaAccepted(dir):
-		a.Log.Printf("%s", i18n.T("doc.srv_eula_false", eulaPath, mcserver.EulaURL))
+		a.Log.Printf("%s", i18n.T("doc.srv_eula_false", eulaPath, mcserver.EulaURL, name))
 		problems++
 	default:
 		a.Log.Printf("%s", i18n.T("doc.srv_eula_ok"))

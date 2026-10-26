@@ -192,6 +192,11 @@ func (a *App) serverCreate(args []string) int {
 	if _, err := mcserver.WriteFiles(o, a.Log); err != nil {
 		return a.fatal(err)
 	}
+	// WriteFiles only fills in what is missing, so an existing eula.txt saying false
+	// would survive a create that was told to accept the licence.
+	if err := mcserver.AcceptEula(o.Dir); err != nil {
+		return a.fatal(err)
+	}
 	a.Log.Printf("%s", i18n.T("srv.created", name, versionID))
 	a.Log.Printf("%s", i18n.T("inst.show_row", padRight(i18n.T("srv.field.dir"), 12), o.Dir))
 	a.Log.Printf("%s", i18n.T("inst.show_row", padRight(i18n.T("srv.field.port"), 12), fmt.Sprintf("%d", o.Port)))
@@ -329,6 +334,7 @@ func (a *App) serverSet(args []string) int {
 		"port":           {takesValue: true},
 		"jvm-arg":        {takesValue: true, list: true},
 		"clear-jvm-args": {},
+		"eula":           {},
 	})
 	if err != nil {
 		return a.fatal(err)
@@ -382,6 +388,23 @@ func (a *App) serverSet(args []string) int {
 			return a.usageError("srv.bad_port", port)
 		}
 		srv.Port = port
+		changed = true
+	}
+	if f.boolean("eula") {
+		// The licence can be accepted later than creation — doctor points here when
+		// it finds a server that will refuse to start. The URL is always printed and
+		// the question is always asked unless the caller said --yes.
+		ok, err := a.askEula(true)
+		if err != nil {
+			return a.fatal(err)
+		}
+		if !ok {
+			return a.fatal(fmt.Errorf("%s", i18n.T("srv.eula_declined")))
+		}
+		if err := mcserver.AcceptEula(a.serverDir(srv)); err != nil {
+			return a.fatal(err)
+		}
+		a.Log.Printf("%s", i18n.T("srv.eula_written", srv.Name, filepath.Join(a.serverDir(srv), "eula.txt")))
 		changed = true
 	}
 	if f.boolean("clear-jvm-args") {

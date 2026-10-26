@@ -28,12 +28,13 @@
 
 | 命令 | 作用 |
 | --- | --- |
-| `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg …] [--eula]` | 注册一个服务器 |
+| `mcli server create <名称> --version <版本> [--java <路径>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <路径>] [--jvm-arg …] [--eula]` | 注册一个服务器 |
+| `mcli server set <名称> [--version <版本>] [--port N] [--java <路径>] [--xmx] [--xms] [--jvm-arg …] [--clear-jvm-args] [--eula]` | 修改服务器；`--eula` 用于事后接受协议（打印网址并提问） |
 | `mcli server [list \| show <name> \| set <name> … \| delete <name> [--keep-files]]` | 查看和修改服务器 |
 | `mcli server start <name> [--dry-run] [--detach] [--eula] [--port N]` | 按需抓取 jar 并启动 |
 | `mcli server attach <name> [--lines N]` | 跟随后台服务器的控制台 |
 | `mcli server cmd <name> <command…>` | 发送一条命令 |
-| `mcli server stop <name> [--force]` | 发送 SIGINT，存档会保存 |
+| `mcli server stop <名称> [--force]` | 用真正会保存存档的方式停止：把服务器自己的 `stop` 写进它的控制台；`--force` 则直接结束 |
 
 ## Fabric
 

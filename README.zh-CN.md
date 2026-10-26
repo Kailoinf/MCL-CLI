@@ -89,6 +89,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli add <项目> [--instance <名称>] [--version <版本>] [--loader <加载器>] [--pack-version <版本>] [--dry-run]` | 把项目的匹配文件装进实例；整合包会被读取并按整合包安装 |
 | `mcli mods [<名称>]` | 实例里已有的 mods/、resourcepacks/、shaderpacks/ |
 | `mcli server create <名称> --version <版本> [--java <路径>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <路径>] [--jvm-arg ...] [--eula]` | 注册服务器：独立目录、存档与端口；会打印 Minecraft EULA 并要求确认 |
+| `mcli server set <名称> [--version <版本>] [--port N] [--java <路径>] [--xmx 2G] [--xms 512M] [--jvm-arg …] [--clear-jvm-args] [--eula]` | 修改服务器；`--eula` 用于事后接受协议（打印网址并提问） |
 | `mcli server [list \| show <名称> \| set <名称> [--xmx] [--xms] [--port] [--java] [--version] \| delete <名称> [--keep-files] [--yes]]` | 查看与修改服务器 |
 | `mcli server start <名称> [--dry-run] [--detach] [--eula] [--port N]` | 缺少时下载服务端 jar 并启动；默认前台，控制台直接可用，Ctrl+C 会保存并停止 |
 | `mcli server attach <名称> [--lines N]` | 接上后台服务器的控制台，可直接输入命令（Ctrl+C 只是离开，服务器继续跑） |
@@ -198,7 +199,7 @@ printf 'list\nstop\n' | mcli server start survival                   # 也可以
 ```
 
 * 目录是 `<minecraft_dir>/servers/<名称>`：jar、存档、`eula.txt`、`server.properties` 都在里面，别的操作不会碰它们；已存在的 `server.properties` 永不覆写。
-* EULA 不会替你同意：先打印网址，再问一次；`--eula` 或全局 `--yes` 只是跳过提问，不等于不提。
+* EULA 不会替你同意：先打印网址，再问一次；`--eula` 或全局 `--yes` 只是跳过提问，不等于不提。它也可以事后接受 —— `mcli server set <名称> --eula`，正是 `doctor` 发现服务器会拒绝启动时让你执行的那条命令。
 * `--detach` 会后台启动。后台服务器的控制台输出在 `<dir>/logs/console.log`，服务器自己的日志在 `<dir>/logs/latest.log`。
 * **停止服务器要走它自己的控制台，而不是绕过它。** 无头 JVM 并没有启动器可以依赖的信号处理器：在本机实测，SIGINT 和 SIGTERM 都会让进程直接结束，它自己的日志里既没有 `Stopping server` 也没有 `Saving worlds` —— 存档只保留到最后一次自动保存为止。所以 `mcli server stop` 是往它的控制台写入服务器自己的 `stop` 命令，并等它保存完再关闭；`--force` 则直接结束，并如实说明这是强制结束。
 * pid 在服务器启动那一刻就记下（两种模式都一样），所以被误杀的 mcli 留下的服务器仍然能被 `server list` 看到、也仍然停得掉。前台运行时 mcli 也接管控制台，于是 Ctrl+C、`timeout` 的 SIGTERM、以及 `mcli server cmd <名称> stop` 都会在退出前保存存档。

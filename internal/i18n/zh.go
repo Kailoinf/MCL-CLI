@@ -394,8 +394,8 @@ var zh = map[string]string{
 	"doc.srv_jar_unreadable":      "服务端 jar %s 读不了：%v",
 	"doc.srv_jar_corrupt":         "服务端 jar %s 是 %s，而版本说是 %s；`mcli repair %s` 可以恢复",
 	"doc.srv_jar_ok":              "服务端 jar %s 与版本的校验和一致（%s）",
-	"doc.srv_eula_missing":        "eula.txt 不存在，服务器会拒绝启动；先读 %s 并自己同意（mcli 永不代为同意）",
-	"doc.srv_eula_false":          "eula.txt 没有接受协议（%s）；先读 %s，同意后再把 eula 设为 true",
+	"doc.srv_eula_missing":        "eula.txt 不存在，服务器会拒绝启动；先读 %s，再用 `mcli server set %s --eula` 接受（mcli 永不静默接受）",
+	"doc.srv_eula_false":          "eula.txt 没有接受协议（%s）；先读 %s，同意后运行 `mcli server set %s --eula`",
 	"doc.srv_eula_ok":             "eula.txt 已接受协议",
 	"doc.srv_props_missing":       "server.properties 还没写出来；服务器首次启动会自己创建",
 	"doc.srv_props_bad":           "server.properties 里没有可用的 server-port 行",
@@ -467,6 +467,7 @@ var zh = map[string]string{
 
 	// ---------------------------------------------------------------- server
 	"cli.cmd.server.usage": "mcli server <create|list|show|set|delete|start|stop|attach|cmd> [选项]",
+	"srv.eula_written":     "服务器 %s：eula.txt 现在已接受协议（%s）",
 	"cli.cmd.server.desc":  "开服务器：一个 jar、一份存档、独立端口",
 	"srv.exists":           "服务器 %s 已存在",
 	"srv.name_taken":       "已有同名实例 %s；服务器与实例共用名字空间",

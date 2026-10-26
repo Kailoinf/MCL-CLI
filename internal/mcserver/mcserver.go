@@ -101,6 +101,16 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
+// AcceptEula writes eula.txt with the licence accepted. It overwrites on purpose:
+// WriteFiles only creates missing files, so a directory whose eula.txt says false
+// would otherwise keep refusing to start after the person said yes.
+func AcceptEula(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "eula.txt"), []byte(EulaText), 0o644)
+}
+
 // WriteFiles writes eula.txt and server.properties when they are missing, and
 // returns the names it created. An existing file is never touched: the world,
 // the properties and the licence belong to whoever runs this server.

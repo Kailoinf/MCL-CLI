@@ -30,11 +30,12 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 | Command | What it does |
 | --- | --- |
 | `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg …] [--eula]` | register a server |
+| `mcli server set <name> [--version <v>] [--port N] [--java <path>] [--xmx] [--xms] [--jvm-arg …] [--clear-jvm-args] [--eula]` | change a server; `--eula` accepts the licence later, printing the URL and asking |
 | `mcli server [list \| show <name> \| set <name> … \| delete <name> [--keep-files]]` | inspect and change servers |
 | `mcli server start <name> [--dry-run] [--detach] [--eula] [--port N]` | fetch the jar if needed and start |
 | `mcli server attach <name> [--lines N]` | follow a detached server's console |
 | `mcli server cmd <name> <command…>` | send one command |
-| `mcli server stop <name> [--force]` | SIGINT, so the world is saved |
+| `mcli server stop <name> [--force]` | stop a server the way that saves its world: the server's own `stop` through its console; `--force` kills instead |
 
 ## Fabric
 

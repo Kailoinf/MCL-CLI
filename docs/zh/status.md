@@ -79,6 +79,13 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* EULA 可以在创建之后再接受：`mcli server set <名称> --eula` 会打印网址、提问、写出文件 —— 这正是
+  `doctor` 现在在发现「服务器会拒绝启动」时点名的命令。端到端验证过：doctor 报出未接受协议并给出该命令，
+  该命令写入 `eula=true`，下一次 doctor 通过。
+* 这条命令的第一版在撒谎：它报告「eula.txt 现在已接受协议」，而文件里仍然写着 `false` —— 因为它走的
+  是 `WriteFiles`，而那个函数只创建缺失的文件。现在接受协议是直接覆盖写文件（`mcserver.AcceptEula`），
+  `server set --eula` 与 `server create --eula` 都是如此（后者同样会遇到「既有的 false 被保留」问题）。
+  这条结论是对着文件核实的，不是对着输出核实的；测试把它钉住了。
 * 服务端也进了 `doctor` 与 `repair`。`doctor <服务端>` 会检查：jar 与版本发布的校验和是否一致、
   `eula.txt`、`server.properties`（以及是否与另一个 mcli 服务端配置了同一端口）、该版本需要的 Java、
   记录里那个已经不在运行的 pid、以及最近一次日志的结尾。逐条实测过：jar 被移走时会报出缺失与期望大小

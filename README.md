@@ -92,6 +92,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--pack-version <v>] [--dry-run]` | install a project's matching file into an instance; a modpack is read and installed as a pack |
 | `mcli mods [<instance>]` | what an instance already has in mods/, resourcepacks/, shaderpacks/ |
 | `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg ...] [--eula]` | register a server: its own directory, world and port; the Minecraft EULA is printed and has to be accepted |
+| `mcli server set <name> [--version <v>] [--port N] [--java <path>] [--xmx 2G] [--xms 512M] [--jvm-arg …] [--clear-jvm-args] [--eula]` | change a server; `--eula` accepts the licence later, printing the URL and asking |
 | `mcli server [list \| show <name> \| set <name> [--xmx] [--xms] [--port] [--java] [--version] \| delete <name> [--keep-files] [--yes]]` | inspect and change servers |
 | `mcli server start <name> [--dry-run] [--detach] [--eula] [--port N]` | fetch the server jar if needed and start it; attached by default, so the console is yours and Ctrl+C saves and stops |
 | `mcli server attach <name> [--lines N]` | follow a detached server's console and type into it (Ctrl+C leaves the server running) |
@@ -214,7 +215,9 @@ printf 'list\nstop\n' | mcli server start survival                   # or script
   `server.properties` live there, and nothing else touches them. An existing
   `server.properties` is never rewritten.
 * The EULA is never accepted for you: the URL is printed, the question is asked,
-  and `--eula` (or a global `--yes`) only skips the question, not the notice.
+  and `--eula` (or a global `--yes`) only skips the question, not the notice. It can
+  also be accepted later — `mcli server set <name> --eula` is the command `doctor`
+  points at when it finds a server that would refuse to start.
 * `--detach` starts the server in the background. A detached server writes its
   console to `<dir>/logs/console.log` and its own log to `<dir>/logs/latest.log`.
 * **A server is stopped through its own console, not around it.** A headless JVM

@@ -75,6 +75,16 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* The EULA can be accepted after creation: `mcli server set <name> --eula` prints the
+  URL, asks, and writes the file — the command `doctor` now names when it finds a
+  server that would refuse to start. Verified end to end: doctor reports the refusal
+  and the command, the command writes `eula=true`, and the next doctor passes.
+* The first version of that command lied: it reported "eula.txt now accepts the
+  licence" while the file still said `false`, because it went through `WriteFiles`,
+  which only creates files that are missing. Accepting the licence now writes the file
+  outright (`mcserver.AcceptEula`), in `server set --eula` and in `server create
+  --eula` (where an existing refusal would have survived the same way). The claim was
+  checked against the file, not against the message; the tests pin it.
 * Servers are in `doctor` and `repair`. `doctor <server>` checks the jar against the
   checksum the version publishes, `eula.txt`, `server.properties` (and whether another
   mcli server claims the same port), the Java the version needs, a recorded pid that is

@@ -394,8 +394,8 @@ var en = map[string]string{
 	"doc.srv_jar_unreadable":      "server jar %s cannot be read: %v",
 	"doc.srv_jar_corrupt":         "server jar %s is %s but the version says %s; `mcli repair %s` restores it",
 	"doc.srv_jar_ok":              "server jar %s matches the version's checksum (%s)",
-	"doc.srv_eula_missing":        "eula.txt is missing, so the server will refuse to start; read %s and accept it yourself (mcli never does)",
-	"doc.srv_eula_false":          "eula.txt does not accept the licence (%s); read %s and set eula=true when you agree",
+	"doc.srv_eula_missing":        "eula.txt is missing, so the server will refuse to start; read %s, then accept it with `mcli server set %s --eula` (mcli never accepts it silently)",
+	"doc.srv_eula_false":          "eula.txt does not accept the licence (%s); read %s, then run `mcli server set %s --eula` when you agree",
 	"doc.srv_eula_ok":             "eula.txt accepts the licence",
 	"doc.srv_props_missing":       "server.properties is not written yet; the server creates it on the first start",
 	"doc.srv_props_bad":           "server.properties has no usable server-port line",
@@ -467,6 +467,7 @@ var en = map[string]string{
 
 	// ---------------------------------------------------------------- server
 	"cli.cmd.server.usage": "mcli server <create|list|show|set|delete|start|stop|attach|cmd> [options]",
+	"srv.eula_written":     "server %s: eula.txt now accepts the licence (%s)",
 	"cli.cmd.server.desc":  "run a server: one jar, one world, its own port",
 	"srv.exists":           "server %s already exists",
 	"srv.name_taken":       "an instance called %s already exists; server names share the namespace",

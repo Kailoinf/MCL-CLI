@@ -141,7 +141,8 @@ small steps as each piece passes.
 - Do not "fix" a pack, profile or instance by rewriting its paths or ids: refuse and
   say what to run instead (a mismatch that is stated is worth more than a guess).
 - The EULA is printed, never assumed: `--eula`/`--yes` skip the question, not the
-  notice.
+  notice. Accepting it writes `eula.txt` outright (`mcserver.AcceptEula`) — going
+  through `WriteFiles` silently did nothing when the file already said false.
 
 ## Verification
 

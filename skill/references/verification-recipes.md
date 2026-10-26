@@ -71,6 +71,10 @@ mcli waits for the server's own `Done (` line before forwarding anything.
 ## A server's own health (doctor and repair)
 
 ```sh
+printf 'eula=false\n' > .../servers/mc-test/eula.txt
+./mcli doctor mc-test                     # names the refusal and the command to fix it
+./mcli server set mc-test --eula --yes    # prints the URL, then writes eula=true
+grep -c eula=true .../servers/mc-test/eula.txt   # the file, not the message, is the check
 mv .../servers/mc-test/server.jar /tmp/keep
 ./mcli doctor mc-test                     # names the jar, its expected size, exit 1
 ./mcli repair mc-test --yes               # fetches the jar, and nothing else
