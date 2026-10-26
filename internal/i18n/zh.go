@@ -335,8 +335,30 @@ var zh = map[string]string{
 	"launch.unknown_target":  "实例 %s 不存在，且 %s 不在版本清单中；可用 mcli create %s --version <版本> 创建",
 	"launch.no_target_last":  "未指定实例，复用上次启动（%s）",
 
+	"srv.attach_hint_detached": "mcli server attach %s 可以接上它的控制台，mcli server stop %s 可以停掉它",
+	"srv.attach_header":        "已连接服务器 %s 的控制台（pid %d）",
+	"srv.attach_hint":          "直接输入服务器命令并回车；Ctrl+C 只是离开控制台，不会停掉服务器",
+	"srv.attach_left":          "已离开 %s 的控制台；服务器仍在运行（mcli server stop %s 可停止）",
+	"srv.attach_ended":         "%s 的控制台已结束：服务器不再运行",
+	"srv.attach_error":         "控制台会话结束：%s",
+	"srv.attach_unsupported":   "本系统不支持接入服务器控制台（没有 FIFO）；请改用前台 mcli server start",
+	"srv.cmd_sent":             "已发送：%s",
+
+	// ---------------------------------------------------------------- fabric
+	"cli.cmd.fabric.usage": "mcli fabric <list <版本>|install <版本> [<loader>]> [--loader <版本>] [--limit N]",
+	"cli.cmd.fabric.desc":  "安装 Fabric 加载器（把 Fabric 发布的 profile 放进 mcli 自己的 versions 目录）",
+	"fab.list_header":      "%s %s %s %s",
+	"fab.list_row":         "%s %s %s %s",
+	"fab.stable_yes":       "是",
+	"fab.list_hint":        "%d/%d 个 %s 的 loader 版本已显示；用 mcli fabric install %s <loader> 安装其中一个",
+	"fab.no_loaders":       "Fabric 没有针对 %s 的加载器（%v）",
+	"fab.latest_resolved":  "%s 的最新稳定加载器：%s",
+	"fab.installing":       "正在为 %s 安装 Fabric 加载器 %s",
+	"fab.installed":        "%s 已安装；用 mcli create <名称> --version %s 创建实例",
+	"fab.next_hint":        "之后会直接从磁盘读取该 profile，%s 离线也能用",
+
 	// ---------------------------------------------------------------- server
-	"cli.cmd.server.usage": "mcli server <create|list|show|set|delete|start|stop> [选项]",
+	"cli.cmd.server.usage": "mcli server <create|list|show|set|delete|start|stop|attach|cmd> [选项]",
 	"cli.cmd.server.desc":  "开服务器：一个 jar、一份存档、独立端口",
 	"srv.exists":           "服务器 %s 已存在",
 	"srv.name_taken":       "已有同名实例 %s；服务器与实例共用名字空间",

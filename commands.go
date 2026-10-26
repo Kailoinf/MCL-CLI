@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Kailoinf/MCL-CLI/internal/auth"
+	"github.com/Kailoinf/MCL-CLI/internal/fabric"
 	"github.com/Kailoinf/MCL-CLI/internal/i18n"
 	"github.com/Kailoinf/MCL-CLI/internal/java"
 	"github.com/Kailoinf/MCL-CLI/internal/launch"
@@ -260,6 +261,8 @@ func (a *App) cmdCreate(args []string) int {
 		"xms":      {takesValue: true},
 		"jvm-arg":  {takesValue: true, list: true},
 		"game-arg": {takesValue: true, list: true},
+		"fabric":   {},
+		"loader":   {takesValue: true},
 		"force":    {},
 	})
 	if err != nil {
@@ -293,6 +296,26 @@ func (a *App) cmdCreate(args []string) int {
 		} else if _, ok := man.Find(version); !ok {
 			return a.fatal(fmt.Errorf("%s", i18n.T("inst.version_unknown", version)))
 		}
+	}
+	// --fabric turns the game version into a loader profile: Fabric publishes it,
+	// mcli installs it, and the instance then points at the profile's own id.
+	if f.boolean("fabric") {
+		loader := f.str("loader", "")
+		if loader == "" || isLatest(loader) {
+			entry, err := fabric.Latest(a.Policy(), version)
+			if err != nil {
+				return a.fatal(fmt.Errorf("%s", i18n.T("fab.no_loaders", version, err)))
+			}
+			a.Log.Infof("%s", i18n.T("fab.latest_resolved", version, entry.Loader.Version))
+			loader = entry.Loader.Version
+		}
+		a.Log.Printf("%s", i18n.T("fab.installing", version, loader))
+		id, err := fabric.Install(a.Policy(), a.VersionsDir(), version, loader, a.Log)
+		if err != nil {
+			return a.fatal(err)
+		}
+		a.Log.Printf("%s", i18n.T("fab.installed", id, id))
+		version = id
 	}
 	if err := launch.ValidateMemory(f.str("xmx", "")); err != nil {
 		return a.fatal(err)
@@ -663,6 +686,6 @@ func (a *App) autoCreateInstance(name string) (*store.Instance, error) {
 	if err := a.Store.Save(); err != nil {
 		return nil, err
 	}
-	a.Log.Printf("%s", i18n.T("launch.auto_create", version))
+	a.Log.Printf("%s", i18n.T("launch.auto_create", version, version))
 	return inst, nil
 }

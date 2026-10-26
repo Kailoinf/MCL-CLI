@@ -86,9 +86,13 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli instance rename <old> <new>` | rename an instance and its game directory |
 | `mcli instance scan [--all]` | version directories found on disk, with their type, jar, parent and instance |
 | `mcli instance import <version> [--as <name>] [--force]` | adopt an existing install (official launcher, PCL, HMCL, a modded profile) |
+| `mcli fabric list <game> [--limit N]` | the Fabric loader builds published for a game version |
+| `mcli fabric install <game> [<loader>] [--loader <v>]` | install a loader profile (newest stable by default) |
 | `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg ...] [--eula]` | register a server: its own directory, world and port; the Minecraft EULA is printed and has to be accepted |
 | `mcli server [list \| show <name> \| set <name> [--xmx] [--xms] [--port] [--java] [--version] \| delete <name> [--keep-files] [--yes]]` | inspect and change servers |
 | `mcli server start <name> [--dry-run] [--detach] [--eula] [--port N]` | fetch the server jar if needed and start it; attached by default, so the console is yours and Ctrl+C saves and stops |
+| `mcli server attach <name> [--lines N]` | follow a detached server's console and type into it (Ctrl+C leaves the server running) |
+| `mcli server cmd <name> <command…>` | send one command into a running server's console |
 | `mcli server stop <name> [--force]` | ask a detached server to stop: it gets SIGINT, exactly what Ctrl+C would send, so the world is saved |
 | `mcli doctor [<name>] [--all] [--deep]` | health check: the machine (home, java, manifest, log) and every file an instance needs; exit 1 when something is wrong |
 | `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the files doctor found missing or damaged (`--force` re-downloads everything planned) |
@@ -195,6 +199,8 @@ file and runs it.
 ```sh
 mcli server create survival --version 26.3 --port 25566 --xmx 4G   # prints the EULA URL, asks for Y
 mcli server start survival                                          # fetches ~60 MB once, then runs attached
+mcli server start survival --detach                                 # or in the background, pid recorded
+mcli server attach survival                                         # follow that console, type commands
 mcli server stop survival                                           # only needed for --detach runs
 ```
 
@@ -208,6 +214,23 @@ mcli server stop survival                                           # only neede
   `<dir>/logs/console.log` and its own log to `<dir>/logs/latest.log`.
 * Java comes from the same runtime rules as the client: the version's
   `javaVersion.majorVersion`, and mcli installs the runtime when it is missing.
+* `server attach` needs a FIFO for the server's stdin (Linux, macOS); elsewhere
+  the option is simply reported as unavailable and `server start` runs in the
+  foreground instead.
+
+## Fabric
+
+```sh
+mcli fabric list latest          # loader builds for a game version
+mcli fabric install latest       # newest stable loader, written into versions/
+mcli create modded --version latest --fabric
+```
+
+Fabric publishes its loader as a version JSON that inherits from the game version
+(`meta.fabricmc.net`), which is exactly the shape mcli reads, so installing a
+loader is fetching one document and writing it where the version loader looks.
+After that the instance launches, repairs and diagnoses like any other. mcli does
+**not** install OptiFine, Forge or Quilt — those are out of scope for now.
 
 ## Mirror behaviour
 
@@ -239,8 +262,22 @@ gofmt -l .             # must stay empty
 ```
 
 The i18n test suite fails if any `i18n.T("key")` in the repository has no entry
-in the catalogs, or if the English and Chinese catalogs drift apart, so
-translations cannot silently rot.
+in the catalogs, if the English and Chinese catalogs drift apart, or if a call
+site passes the wrong number of arguments for its translation, so translations
+cannot silently rot.
+
+The documentation lives in `docs/` and is a VitePress site:
+
+```sh
+pnpm install
+pnpm docs:dev      # http://localhost:5173, live reload
+pnpm docs:build    # static site in docs/.vitepress/dist
+```
+
+`skill/SKILL.md` is the working guide for anyone (or anything) editing mcli:
+where things live, how to verify a change without a display, and the traps that
+have already been hit. It is updated in the same commit as the feature it
+describes.
 
 ## License
 

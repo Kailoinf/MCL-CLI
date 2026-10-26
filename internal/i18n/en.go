@@ -335,8 +335,30 @@ var en = map[string]string{
 	"launch.unknown_target":  "instance %s does not exist and %s is not a version in the manifest; `mcli create %s --version <version>` creates one",
 	"launch.no_target_last":  "no instance given; replaying the previous launch (%s)",
 
+	"srv.attach_hint_detached": "`mcli server attach %s` opens its console, `mcli server stop %s` stops it",
+	"srv.attach_header":        "attached to server %s (pid %d)",
+	"srv.attach_hint":          "type a server command and press enter; Ctrl+C leaves the console without stopping the server",
+	"srv.attach_left":          "left the console of %s; the server keeps running (`mcli server stop %s` stops it)",
+	"srv.attach_ended":         "the console of %s ended: the server is no longer running",
+	"srv.attach_error":         "console session ended: %s",
+	"srv.attach_unsupported":   "this system cannot attach to a server console (no FIFO); use `mcli server start` in the foreground instead",
+	"srv.cmd_sent":             "sent: %s",
+
+	// ---------------------------------------------------------------- fabric
+	"cli.cmd.fabric.usage": "mcli fabric <list <game>|install <game> [<loader>]> [--loader <v>] [--limit N]",
+	"cli.cmd.fabric.desc":  "install a Fabric loader (the profile Fabric publishes, in mcli's own versions directory)",
+	"fab.list_header":      "%s %s %s %s",
+	"fab.list_row":         "%s %s %s %s",
+	"fab.stable_yes":       "yes",
+	"fab.list_hint":        "%d of %d loader build(s) for %s shown; `mcli fabric install %s <loader>` installs one",
+	"fab.no_loaders":       "Fabric has no loader for %s (%v)",
+	"fab.latest_resolved":  "newest stable loader for %s: %s",
+	"fab.installing":       "installing Fabric loader %s for %s",
+	"fab.installed":        "%s is installed; create an instance with `mcli create <name> --version %s`",
+	"fab.next_hint":        "later runs read the profile from disk, so %s keeps working offline",
+
 	// ---------------------------------------------------------------- server
-	"cli.cmd.server.usage": "mcli server <create|list|show|set|delete|start|stop> [options]",
+	"cli.cmd.server.usage": "mcli server <create|list|show|set|delete|start|stop|attach|cmd> [options]",
 	"cli.cmd.server.desc":  "run a server: one jar, one world, its own port",
 	"srv.exists":           "server %s already exists",
 	"srv.name_taken":       "an instance called %s already exists; server names share the namespace",

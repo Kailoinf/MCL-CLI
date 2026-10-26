@@ -160,6 +160,36 @@ its own small package, `internal/mcserver`, instead of a flag on `internal/launc
 * **Stopping is signalling.** `server stop` reads the recorded pid, checks
   `/proc/<pid>/cmdline` still names this server's jar, sends SIGINT and waits for
   the process to disappear. Never `kill -9`: the world is saved on the way out.
+* **A console you can come back to.** A detached server reads its commands from a
+  FIFO (`<dir>/console.in`, opened read-write so it never blocks) and writes its
+  output to `<dir>/logs/console.log`. `server attach` is the two ends of that pipe
+  — it tails the file and forwards typed lines — and `server cmd` is the same write
+  without a session. Ctrl+C during an attach leaves the server running; stopping it
+  is `server stop`'s job. On a system without FIFOs the option reports itself
+  unavailable rather than pretending.
+
+## Fabric profiles
+
+Fabric publishes its loader as a version JSON that inherits from the game version
+(`meta.fabricmc.net/v2/versions/loader/<game>/<loader>/profile/json`): an id, a
+main class (`KnotClient`), the jvm argument that emulates the vanilla main class,
+and a library list. That is exactly the shape `mcv.Version` reads, so `internal/fabric`
+only has to fetch that document and write it as
+`versions/<id>/<id>.json` — everything after it (launch, install, doctor, repair)
+needs no Fabric-specific code at all.
+
+Two details are worth keeping in mind:
+
+* **Libraries in the old style.** The profile lists libraries as `name`, `url` and
+  `sha1` with no `downloads` block. `Library.ArtifactDownload` therefore builds the
+  maven path from the name and the repository from `url`; without that the loader
+  and its asm/mixin dependencies never reach the classpath and the game dies
+  looking for its main class. Other launchers' profiles (PCL, HMCL) use the same
+  style, so this is not Fabric-only.
+* **No merging of our own.** The profile inherits the vanilla version, so
+  `mcv.Version.Effective` already merges the library lists and the java version;
+  mcli never writes a flattened copy, which keeps the loader updatable by simply
+  installing another profile.
 
 ## Error handling style
 

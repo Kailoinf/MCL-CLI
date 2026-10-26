@@ -83,9 +83,13 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli instance rename <旧名> <新名>` | 实例改名，游戏目录一起搬 |
 | `mcli instance scan [--all]` | 列出磁盘上的版本目录：类型、JSON/JAR、父版本、是否已注册 |
 | `mcli instance import <版本> [--as <名称>] [--force]` | 接管已有安装（官方启动器 / PCL / HMCL / 整合包） |
+| `mcli fabric list <版本> [--limit N]` | 某个游戏版本可用的 Fabric 加载器列表 |
+| `mcli fabric install <版本> [<loader>] [--loader <版本>]` | 安装加载器 profile（默认最新稳定版） |
 | `mcli server create <名称> --version <版本> [--java <路径>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <路径>] [--jvm-arg ...] [--eula]` | 注册服务器：独立目录、存档与端口；会打印 Minecraft EULA 并要求确认 |
 | `mcli server [list \| show <名称> \| set <名称> [--xmx] [--xms] [--port] [--java] [--version] \| delete <名称> [--keep-files] [--yes]]` | 查看与修改服务器 |
 | `mcli server start <名称> [--dry-run] [--detach] [--eula] [--port N]` | 缺少时下载服务端 jar 并启动；默认前台，控制台直接可用，Ctrl+C 会保存并停止 |
+| `mcli server attach <名称> [--lines N]` | 接上后台服务器的控制台，可直接输入命令（Ctrl+C 只是离开，服务器继续跑） |
+| `mcli server cmd <名称> <命令…>` | 往运行中的服务器控制台发一条命令 |
 | `mcli server stop <名称> [--force]` | 让后台运行的服务器退出：发送 SIGINT（等同 Ctrl+C），因此存档会被保存 |
 | `mcli doctor [<名称>] [--all] [--deep]` | 体检：本机环境（目录、Java、版本清单、日志）＋实例需要的每个文件；有问题时退出码 1 |
 | `mcli repair <名称> [--deep] [--force] [--dry-run]` | 只补齐 doctor 查出的缺失/损坏文件（--force 则按清单全部重下） |
@@ -182,6 +186,8 @@ mcli 在 `~/.mcl-cli/` 里放五个小 TOML 文件：
 ```sh
 mcli server create survival --version 26.3 --port 25566 --xmx 4G   # 打印 EULA 网址并要求按 Y
 mcli server start survival                                          # 首次约 60MB，之后前台运行
+mcli server start survival --detach                                 # 或后台运行，记录 pid
+mcli server attach survival                                         # 接上那个控制台，直接敲命令
 mcli server stop survival                                           # 只有 --detach 启动的才需要手动停
 ```
 
@@ -189,6 +195,19 @@ mcli server stop survival                                           # 只有 --d
 * EULA 不会替你同意：先打印网址，再问一次；`--eula` 或全局 `--yes` 只是跳过提问，不等于不提。
 * `--detach` 会后台启动并记录 pid，之后 `mcli server stop` 用它发信号。后台服务器的控制台输出在 `<dir>/logs/console.log`，服务器自己的日志在 `<dir>/logs/latest.log`。
 * Java 与客户端同一套规则：用版本 JSON 里的 `javaVersion.majorVersion`，缺了就由 mcli 安装。
+* `server attach` 依赖 FIFO（Linux / macOS）；其它系统会直接提示不支持，改用前台 `server start`。
+
+## Fabric
+
+```sh
+mcli fabric list latest          # 看某个游戏版本可用的加载器
+mcli fabric install latest       # 安装最新稳定加载器，写进 versions/
+mcli create modded --version latest --fabric
+```
+
+Fabric 把加载器发布成一个「继承自游戏版本」的版本 JSON（`meta.fabricmc.net`），
+正好就是 mcli 能读的形态，所以安装加载器 = 取一份文档、写到版本加载器会去找的位置。
+之后这个实例的启动、修复、体检和普通版本完全一样。OptiFine / Forge / Quilt 暂不在范围内。
 
 ## 镜像行为
 
@@ -216,8 +235,19 @@ gofmt -l .             # 必须为空
 ./mcli --lang en help  # 双语界面可随时切换检查
 ```
 
-i18n 测试会在以下情况直接失败：代码里出现 `i18n.T("键")` 但词表没有该键，
-或者中英词表的键不一致——翻译不会悄悄烂掉。
+i18n 测试会在以下情况直接失败：代码里出现 `i18n.T("键")` 但词表没有该键、
+中英词表的键不一致、或调用处传的参数个数与译文中的占位符对不上——翻译不会悄悄烂掉。
+
+文档在 `docs/`，用 VitePress 构建：
+
+```sh
+pnpm install
+pnpm docs:dev      # http://localhost:5173，改动即时刷新
+pnpm docs:build    # 静态站点输出到 docs/.vitepress/dist
+```
+
+`skill/SKILL.md` 是给改这个项目的人（或 agent）看的操作手册：代码都在哪、没有显示器时怎么验证、
+已经踩过哪些坑。它和它描述的功能在同一个提交里更新。
 
 ## 许可证
 

@@ -10,8 +10,11 @@ and what is left. Update it in the same commit as the work.
 * `gofmt -l .` empty, `go vet ./...` clean, `go test ./...` green,
   `go build -o mcli .` green.
 * Commands implemented: `version help list create delete launch refresh config
-  java login logout account instance doctor repair server` (`fix` aliases
-  `repair`, `srv` aliases `server`).
+  java login logout account instance doctor repair server fabric` (`fix` aliases
+  `repair`, `srv` aliases `server`, `fab` aliases `fabric`).
+* `docs/` is a VitePress site (`pnpm install && pnpm docs:build`, output in
+  `docs/.vitepress/dist`); `skill/SKILL.md` ships in the repository and is updated
+  with the feature it describes.
 
 ### Layout that the code assumes today
 
@@ -85,6 +88,32 @@ and what is left. Update it in the same commit as the work.
   caller wait for a process that never ends. It now writes to
   `logs/console.log` in its own session, so `start --detach` returns in 0.2s.
 
+* Fabric, against the loader PCL had already installed on the same machine:
+  `fabric list 26.3` reported 255 builds with 0.20.1 newest stable, `fabric
+  install 26.3` wrote `versions/fabric-loader-0.20.1-26.3/fabric-loader-0.20.1-26.3.json`,
+  and `create fab2 --version 26.3 --fabric` produced an instance whose dry-run
+  command line has `KnotClient`, `-DFabricMcEmu= net.minecraft.client.main.Main `
+  verbatim, the parent's `26.3/26.3.jar` and **62** classpath entries. The entry
+  list is byte-identical to the one mcli builds for PCL's own
+  `26.3-Fabric 0.20.1` profile (`diff` of the two classpaths is empty).
+* A real bug that only Fabric exposed: Fabric's profile lists its libraries as
+  `name` + `url` + `sha1` with **no** `downloads` block, and `Library.ArtifactDownload`
+  returned false for anything without one — so the loader never reached the
+  classpath (54 entries instead of 62) and the game would have died looking for
+  its main class. The path is now built from the maven name and the repository the
+  entry names; `internal/mcv/library_url_test.go` pins it, including that a
+  natives classifier still produces no classpath artifact.
+* `internal/i18n/callsites_test.go` counts the arguments of every `i18n.T("key", …)`
+  call site and compares them with the key's verbs. It found eight broken call
+  sites on its first run (`fab.installed`, `launch.auto_create`, …) which had been
+  printing `%!s(MISSING)` at run time — the catalog tests could not see those.
+* All three server console modes, verified for real: the foreground console with
+  stdin held open ran `list` (logging `There are 0 of a max of 20 players
+  online:`) and `stop` (`Stopping the server`), ending with exit code 0;
+  `server attach` against a detached server delivered a piped `list`; and
+  `server cmd <name> say hello from mcli` appeared in the log as
+  `[Server] hello from mcli`. A pipe that closes before the server's console
+  thread exists loses its commands, so keep stdin open until the log says `Done`.
 * The no-compatibility decision is in force: the pre-TOML JSON database import,
   the v2 `state.toml` with inline tokens, `paths.LegacyDB` and every migration
   test are gone, and the store is no longer called a database anywhere
@@ -212,12 +241,7 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 ## Planned work, in the order the maintainer asked for it
 
 
-1. **Fabric loader installation** — today mcli only *runs* an existing modded
-   profile. Installing means fetching the loader's version JSON from
-   `meta.fabricmc.net` (`/v2/versions/loader/<game>/<loader>/profile/json`), which
-   is already the shape `mcv.Version` parses, and merging it as a child of the
-   game version.
-2. **Mod and resource-pack search** — mirror what PCL and Console Minecraft
+1. **Mod and resource-pack search** — mirror what PCL and Console Minecraft
    Launcher do: query Modrinth's and CurseForge's search APIs, list results, and
    install a hit into `mods/` or `resourcepacks/` of an instance. Keep the search
    itself thin (one query, one page, the fields that matter) — the interesting

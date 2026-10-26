@@ -81,8 +81,13 @@ type Library struct {
 		Classifiers map[string]Download `json:"classifiers,omitempty"`
 	} `json:"downloads"`
 	// URL is filled in for very old JSONs that carry "url" instead of
-	// "downloads"; the launcher appends the maven path to it.
+	// "downloads", and for Fabric's launcher profile, which lists its own maven
+	// repository this way; the launcher appends the maven path to it.
 	URL string `json:"url,omitempty"`
+	// SHA1 and Size sit next to "name" in the Fabric profile (and nowhere else):
+	// with them, an entry without a downloads block is still verifiable.
+	SHA1 string `json:"sha1,omitempty"`
+	Size int64  `json:"size,omitempty"`
 }
 
 // Parts splits a maven coordinate: group:artifact:version[:classifier].
@@ -160,14 +165,27 @@ func (l Library) NativeDownload(env Env) (Download, bool) {
 // entries (classifier inside the name) carry no classpath artifact; classic
 // libraries with a "natives" map still ship one.
 func (l Library) ArtifactDownload(env Env) (Download, bool) {
-	if l.Downloads.Artifact == nil {
-		return Download{}, false
-	}
 	if len(l.Natives) == 0 {
 		if c, ok := l.NativeClassifier(env); ok && strings.HasPrefix(c, "natives-") {
 			// modern natives entries carry no classpath artifact
 			return Download{}, false
 		}
+	}
+	if l.Downloads.Artifact == nil {
+		// No downloads block: Fabric's launcher profile (and the very oldest
+		// Mojang JSONs) name a maven repository instead and expect the launcher to
+		// build the path. Without this the loader never reaches the classpath —
+		// the game then dies looking for its main class.
+		path := l.MavenPath("")
+		if l.URL == "" || path == "" {
+			return Download{}, false
+		}
+		return Download{
+			Path: path,
+			URL:  strings.TrimRight(l.URL, "/") + "/" + path,
+			SHA1: l.SHA1,
+			Size: l.Size,
+		}, true
 	}
 	return *l.Downloads.Artifact, true
 }

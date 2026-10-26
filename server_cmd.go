@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -46,6 +49,10 @@ func (a *App) cmdServer(args []string) int {
 		return a.serverStart(args[1:])
 	case "stop", "shutdown":
 		return a.serverStop(args[1:])
+	case "attach", "console", "con":
+		return a.serverAttach(args[1:])
+	case "cmd", "command", "say":
+		return a.serverCmd(args[1:])
 	}
 	return a.fatal(fmt.Errorf("%s", i18n.T("cli.unknown_command", "server "+args[0])))
 }
@@ -583,6 +590,9 @@ func (a *App) serverStart(args []string) int {
 			a.Log.Warnf("%s", err)
 		}
 		a.Log.Printf("%s", i18n.T("srv.detached", pid, filepath.Join(o.Dir, "logs", "latest.log")))
+		if mcserver.ConsolePipesSupported() {
+			a.Log.Printf("%s", i18n.T("srv.attach_hint_detached", name, name))
+		}
 		return 0
 	}
 	srv.Pid = pid
@@ -711,4 +721,178 @@ func (a *App) serverJarMissing(item dl.Item) bool {
 		return false
 	}
 	return !item.Verify()
+}
+
+// serverAttach connects to a server that is already running in the background: it
+// follows the output the server writes and forwards whatever is typed into the
+// server's own stdin pipe. Ctrl+C leaves the console without touching the server
+// — stopping it is `server stop` (or the "stop" command once attached).
+func (a *App) serverAttach(args []string) int {
+	f, err := parseFlags("server attach", args, map[string]flagSpec{
+		"lines": {takesValue: true},
+	})
+	if err != nil {
+		return a.fatal(err)
+	}
+	if f.boolean("help") {
+		a.Log.Printf("%s", i18n.T("cli.cmd.server.usage"))
+		return 0
+	}
+	if len(f.args) == 0 {
+		return a.usageError("cli.missing_arg", "server attach", "<name>")
+	}
+	if len(f.args) > 1 {
+		return a.usageError("cli.unexpected_arg", f.args[1], "server attach")
+	}
+	name := f.args[0]
+	srv, ok := a.Store.GetServer(name)
+	if !ok {
+		return a.fatal(fmt.Errorf("%s", i18n.T("srv.not_found", name)))
+	}
+	if !a.serverRunning(srv) {
+		return a.fatal(fmt.Errorf("%s", i18n.T("srv.not_running", name)))
+	}
+	if !mcserver.ConsolePipesSupported() {
+		return a.fatal(fmt.Errorf("%s", i18n.T("srv.attach_unsupported")))
+	}
+	dir := a.serverDir(srv)
+	out, err := mcserver.OpenConsoleWriter(dir)
+	if err != nil {
+		return a.fatal(err)
+	}
+	defer out.Close()
+
+	lines := 20
+	if f.has("lines") {
+		lines, err = f.int("lines", lines)
+		if err != nil {
+			return a.fatal(err)
+		}
+	}
+
+	a.Log.Printf("%s", i18n.T("srv.attach_header", name, srv.Pid))
+	a.Log.Printf("%s", i18n.T("srv.attach_hint"))
+
+	// Ctrl+C belongs to the console, not to the server: it leaves this session.
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt)
+	done := make(chan string, 1)
+	go func() {
+		<-sigs
+		done <- "interrupt"
+	}()
+	go func() {
+		if err := followConsole(mcserver.ConsoleOutputPath(dir), lines, func() bool {
+			return a.serverRunning(srv)
+		}); err != nil {
+			done <- err.Error()
+			return
+		}
+		done <- "ended"
+	}()
+	go func() {
+		sc := bufio.NewScanner(os.Stdin)
+		for sc.Scan() {
+			if _, err := fmt.Fprintln(out, sc.Text()); err != nil {
+				done <- err.Error()
+				return
+			}
+		}
+		done <- "stdin"
+	}()
+
+	switch why := <-done; why {
+	case "interrupt":
+		a.Log.Printf("%s", i18n.T("srv.attach_left", name, name))
+	case "ended":
+		a.Log.Printf("%s", i18n.T("srv.attach_ended", name))
+	case "stdin":
+		a.Log.Printf("%s", i18n.T("srv.attach_left", name, name))
+	default:
+		a.Log.Printf("%s", i18n.T("srv.attach_error", why))
+		return 1
+	}
+	return 0
+}
+
+// serverCmd sends one command into a running server's console and returns; for a
+// conversation use `server attach`.
+func (a *App) serverCmd(args []string) int {
+	f, err := parseFlags("server cmd", args, map[string]flagSpec{})
+	if err != nil {
+		return a.fatal(err)
+	}
+	if f.boolean("help") {
+		a.Log.Printf("%s", i18n.T("cli.cmd.server.usage"))
+		return 0
+	}
+	if len(f.args) < 2 {
+		return a.usageError("cli.missing_arg", "server cmd", "<name> <command...>")
+	}
+	name := f.args[0]
+	srv, ok := a.Store.GetServer(name)
+	if !ok {
+		return a.fatal(fmt.Errorf("%s", i18n.T("srv.not_found", name)))
+	}
+	if !a.serverRunning(srv) {
+		return a.fatal(fmt.Errorf("%s", i18n.T("srv.not_running", name)))
+	}
+	if !mcserver.ConsolePipesSupported() {
+		return a.fatal(fmt.Errorf("%s", i18n.T("srv.attach_unsupported")))
+	}
+	in, err := mcserver.OpenConsoleWriter(a.serverDir(srv))
+	if err != nil {
+		return a.fatal(err)
+	}
+	defer in.Close()
+	line := strings.Join(f.args[1:], " ")
+	if _, err := fmt.Fprintln(in, line); err != nil {
+		return a.fatal(err)
+	}
+	a.Log.Printf("%s", i18n.T("srv.cmd_sent", line))
+	return 0
+}
+
+// followConsole prints the last lines of a server's console file and then
+// streams whatever the server appends, until stop reports the server is gone.
+func followConsole(path string, lines int, stop func() bool) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if lines > 0 {
+		tail := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+		if len(tail) > lines {
+			tail = tail[len(tail)-lines:]
+		}
+		for _, l := range tail {
+			if l != "" {
+				fmt.Fprintln(os.Stdout, l)
+			}
+		}
+	}
+	offset := int64(len(raw))
+	for {
+		if st, err := os.Stat(path); err == nil && st.Size() < offset {
+			offset = 0 // the server started a fresh console file
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		if _, err := file.Seek(offset, io.SeekStart); err != nil {
+			file.Close()
+			return err
+		}
+		n, err := io.Copy(os.Stdout, file)
+		file.Close()
+		if err != nil {
+			return err
+		}
+		offset += n
+		if !stop() {
+			return nil
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
 }

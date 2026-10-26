@@ -161,6 +161,13 @@ func (c *Command) CommandLine() string {
 	return strings.Join(parts, " ")
 }
 
+// ConsoleInputPath is the pipe a detached server reads commands from, and the
+// same file `server attach` writes them into.
+func ConsoleInputPath(dir string) string { return filepath.Join(dir, "console.in") }
+
+// ConsoleOutputPath is where a detached server's own output is captured.
+func ConsoleOutputPath(dir string) string { return filepath.Join(dir, "logs", "console.log") }
+
 // EulaAccepted reports whether eula.txt exists in dir and accepts the licence.
 func EulaAccepted(dir string) bool {
 	raw, err := os.ReadFile(filepath.Join(dir, "eula.txt"))
@@ -203,14 +210,21 @@ func (c *Command) Run(wait bool) (pid int, exitCode int, err error) {
 			return 0, 0, err
 		}
 		defer console.Close()
-		devNull, err := os.Open(os.DevNull)
-		if err != nil {
-			return 0, 0, err
-		}
-		defer devNull.Close()
-		cmd.Stdin = devNull
 		cmd.Stdout = console
 		cmd.Stderr = console
+		// A console to attach to later, when the system can offer one; without
+		// it the server simply has no input and `/dev/null` stands in.
+		if input, err := OpenConsoleInput(c.Dir); err == nil {
+			defer input.Close()
+			cmd.Stdin = input
+		} else {
+			devNull, err := os.Open(os.DevNull)
+			if err != nil {
+				return 0, 0, err
+			}
+			defer devNull.Close()
+			cmd.Stdin = devNull
+		}
 	}
 	detachProcess(cmd)
 	if err := cmd.Start(); err != nil {
