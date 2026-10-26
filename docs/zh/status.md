@@ -126,6 +126,10 @@
   `An unexpected error occurred while trying to execute that command` —— 出现了两次，
   都是用脚本往刚启动的服务器里喂 `list` 与 `stop` 时。现在控制台输入泵会先等服务器自己打印的就绪行
   （`Done (`），在此之前不转发任何东西：这段时间里人敲的内容留在终端缓冲里，管道里的内容留在管道里。
+  修复后的重跑，两种时序一起验：`printf 'list\nstop\n' | mcli server start` 现在无论命令是在
+  服务器起来之前还是之后到达，都会正常回答 `There are 0 of a max of 20 players online` 并干净停服
+  （两次 `exit=0`、0 残留进程、端口已释放）；修复之前，较早的那种时序会出现上面那句「unexpected
+  error」。那个脚本就是这条的回归检查。
   脚本化控制台（`printf 'list\nstop\n' | mcli server start <名称>`）是需要保持可用的场景。
 * 控制台管道不能在「另一端还有人拿着」之前打开：以只写方式打开 FIFO 会等待读者，于是
   `mcli server start` 在服务器还没起来时就卡住了。这是靠观察真实运行、而不是靠猜找到的 ——

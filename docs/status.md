@@ -145,6 +145,11 @@ and what is left. Update it in the same commit as the work.
   forwarding anything: what a person types meanwhile waits in their terminal, and
   what a pipe holds waits in the pipe. A scripted console — `printf 'list\nstop\n' |
   mcli server start <name>` — is a case worth keeping working.
+  Re-run after the fix, both orderings at once: `printf 'list\nstop\n' | mcli server
+  start` now answers `There are 0 of a max of 20 players online` and stops cleanly
+  whether the lines arrive before or after the server is up (`exit=0` both times, 0
+  leftover processes, port free); before the fix the early ordering produced the
+  "unexpected error" line above. That script is the regression check for this.
 * A console pipe must not be opened before something holds the other end: a FIFO
   opened write-only waits for a reader, so `mcli server start` hung before it had
   started anything. Found by looking at a real run rather than guessing — mcli was
