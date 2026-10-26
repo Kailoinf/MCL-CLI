@@ -52,7 +52,7 @@ func (a *App) cmdInstance(args []string) int {
 }
 
 func (a *App) instanceList() int {
-	names := a.DB.InstanceNames()
+	names := a.Store.InstanceNames()
 	if len(names) == 0 {
 		a.Log.Printf("%s", i18n.T("inst.no_instances"))
 		return 0
@@ -61,7 +61,7 @@ func (a *App) instanceList() int {
 		padRight("NAME", 20), padRight("VERSION", 20), padRight("JAVA", 12),
 		padRight("STATE", 11), padRight("LAST PLAYED", 20), "GAME DIR"))
 	for _, n := range names {
-		inst := a.DB.Data.Instances[n]
+		inst := a.Store.Data.Instances[n]
 		jv := inst.Java
 		if jv == "" {
 			jv = i18n.T("inst.auto")
@@ -94,7 +94,7 @@ func (a *App) reportUnregistered(registered []string) {
 	known := map[string]bool{}
 	for _, n := range registered {
 		known[n] = true
-		if inst, ok := a.DB.GetInstance(n); ok {
+		if inst, ok := a.Store.GetInstance(n); ok {
 			known[inst.Version] = true
 		}
 	}
@@ -113,7 +113,7 @@ func (a *App) reportUnregistered(registered []string) {
 // network: the version JSON on disk decides "missing", the client jar and the
 // asset index decide "incomplete". `mcli doctor <name>` is the precise answer.
 func (a *App) instanceState(name string) string {
-	inst, ok := a.DB.GetInstance(name)
+	inst, ok := a.Store.GetInstance(name)
 	if !ok || inst.Version == "" {
 		return i18n.T("inst.state.missing")
 	}
@@ -156,7 +156,7 @@ func (a *App) instanceShow(args []string) int {
 		return a.usageError("cli.unexpected_arg", f.args[1], "instance show")
 	}
 	name := f.args[0]
-	inst, ok := a.DB.GetInstance(name)
+	inst, ok := a.Store.GetInstance(name)
 	if !ok {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", name)))
 	}
@@ -276,7 +276,7 @@ func (a *App) instanceSet(args []string) int {
 		return a.usageError("cli.unexpected_arg", f.args[1], "instance set")
 	}
 	name := f.args[0]
-	inst, ok := a.DB.GetInstance(name)
+	inst, ok := a.Store.GetInstance(name)
 	if !ok {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", name)))
 	}
@@ -355,7 +355,7 @@ func (a *App) instanceSet(args []string) int {
 		a.Log.Printf("%s", i18n.T("inst.set_usage"))
 		return 0
 	}
-	if err := a.DB.Save(); err != nil {
+	if err := a.Store.Save(); err != nil {
 		return a.fatal(err)
 	}
 	a.Log.Printf("%s", i18n.T("inst.updated", name, strings.Join(changed, " ")))
@@ -393,14 +393,14 @@ func (a *App) instanceCopy(args []string) int {
 		return a.usageError("cli.unexpected_arg", f.args[2], "instance copy")
 	}
 	src, dst := f.args[0], f.args[1]
-	from, ok := a.DB.GetInstance(src)
+	from, ok := a.Store.GetInstance(src)
 	if !ok {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", src)))
 	}
 	if err := validateInstanceName(dst); err != nil {
 		return a.fatal(err)
 	}
-	if _, exists := a.DB.GetInstance(dst); exists {
+	if _, exists := a.Store.GetInstance(dst); exists {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.exists", dst)))
 	}
 
@@ -414,7 +414,7 @@ func (a *App) instanceCopy(args []string) int {
 		JvmArgs:   append([]string{}, from.JvmArgs...),
 		GameArgs:  append([]string{}, from.GameArgs...),
 	}
-	a.DB.Data.Instances[dst] = copied
+	a.Store.Data.Instances[dst] = copied
 
 	files, bytes, copiedFiles := 0, int64(0), false
 	if f.boolean("with-files") {
@@ -434,7 +434,7 @@ func (a *App) instanceCopy(args []string) int {
 			a.Log.Warnf("%s", i18n.T("inst.copy_no_files", srcDir))
 		}
 	}
-	if err := a.DB.Save(); err != nil {
+	if err := a.Store.Save(); err != nil {
 		return a.fatal(err)
 	}
 	a.Log.Printf("%s", i18n.T("inst.copy_ok", src, dst))
@@ -478,14 +478,14 @@ func (a *App) instanceRename(args []string) int {
 		return a.usageError("cli.unexpected_arg", f.args[2], "instance rename")
 	}
 	oldName, newName := f.args[0], f.args[1]
-	inst, ok := a.DB.GetInstance(oldName)
+	inst, ok := a.Store.GetInstance(oldName)
 	if !ok {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", oldName)))
 	}
 	if err := validateInstanceName(newName); err != nil {
 		return a.fatal(err)
 	}
-	if _, exists := a.DB.GetInstance(newName); exists {
+	if _, exists := a.Store.GetInstance(newName); exists {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.exists", newName)))
 	}
 	if oldName == newName {
@@ -494,8 +494,8 @@ func (a *App) instanceRename(args []string) int {
 	}
 
 	inst.Name = newName
-	delete(a.DB.Data.Instances, oldName)
-	a.DB.Data.Instances[newName] = inst
+	delete(a.Store.Data.Instances, oldName)
+	a.Store.Data.Instances[newName] = inst
 
 	// move the game directory (saves, options, resource packs) with it
 	oldDir, newDir := a.instanceDir(oldName), a.instanceDir(newName)
@@ -508,13 +508,13 @@ func (a *App) instanceRename(args []string) int {
 		}
 	}
 	// keep `launch --last` pointing at the instance the user knows
-	if last, err := a.DB.Last(); err == nil && last != nil && last.Instance == oldName {
+	if last, err := a.Store.Last(); err == nil && last != nil && last.Instance == oldName {
 		last.Instance = newName
-		if err := a.DB.SaveLast(last); err != nil {
+		if err := a.Store.SaveLast(last); err != nil {
 			a.Log.Warnf("%s", err)
 		}
 	}
-	if err := a.DB.Save(); err != nil {
+	if err := a.Store.Save(); err != nil {
 		return a.fatal(err)
 	}
 	a.Log.Printf("%s", i18n.T("inst.rename_ok", oldName, newName))

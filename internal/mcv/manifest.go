@@ -70,7 +70,7 @@ func (m *Manifest) Filter(kind, search string, limit int) []ManifestVersion {
 // ManifestStore caches the manifest on disk (raw JSON under cache/) and keeps
 // only its metadata in state.toml, so the TOML documents stay small.
 type ManifestStore struct {
-	DB     *store.DB
+	Store  *store.Store
 	Mapper mirror.Mapper
 	Policy dl.Policy
 	Log    *logx.Logger
@@ -81,8 +81,8 @@ type ManifestStore struct {
 // Get returns the manifest, refreshing it when the cache is missing or older
 // than the configured TTL. force skips the TTL check.
 func (m *ManifestStore) Get(force bool) (*Manifest, error) {
-	cfg := m.DB.Cfg()
-	cache := m.DB.Data.Manifest
+	cfg := m.Store.Cfg()
+	cache := m.Store.Data.Manifest
 	ttl := time.Duration(cfg.ManifestTTLHours) * time.Hour
 	if ttl <= 0 {
 		ttl = 6 * time.Hour
@@ -115,13 +115,13 @@ func (m *ManifestStore) Get(force bool) (*Manifest, error) {
 			m.log().Warnf("%s", err)
 		}
 	}
-	m.DB.Data.Manifest = &store.ManifestCache{
+	m.Store.Data.Manifest = &store.ManifestCache{
 		Source:    source,
 		FetchedAt: time.Now(),
 		File:      m.CacheFile,
 	}
-	if err := m.DB.Save(); err != nil {
-		m.log().Warnf("%s", i18n.T("err.db.no_save", err))
+	if err := m.Store.Save(); err != nil {
+		m.log().Warnf("%s", i18n.T("err.state.no_save", err))
 	}
 	m.log().Infof("%s", i18n.T("mcv.manifest_refreshed", source, len(man.Versions)))
 	return man, nil
@@ -130,8 +130,8 @@ func (m *ManifestStore) Get(force bool) (*Manifest, error) {
 // readCache returns the cached manifest body, if it is still there.
 func (m *ManifestStore) readCache() ([]byte, error) {
 	path := m.CacheFile
-	if path == "" && m.DB.Data.Manifest != nil {
-		path = m.DB.Data.Manifest.File
+	if path == "" && m.Store.Data.Manifest != nil {
+		path = m.Store.Data.Manifest.File
 	}
 	if path == "" {
 		return nil, os.ErrNotExist

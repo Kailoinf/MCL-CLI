@@ -28,7 +28,7 @@ type sampleInstance struct {
 }
 
 type sampleDoc struct {
-	Version  int                        `toml:"db_version"`
+	Version  int                        `toml:"state_version"`
 	Salt     string                     `toml:"salt"`
 	Config   sampleConfig               `toml:"config"`
 	Accounts map[string]*sampleAccount  `toml:"accounts"`
@@ -38,7 +38,7 @@ type sampleDoc struct {
 
 func testDoc() sampleDoc {
 	return sampleDoc{
-		Version: 2,
+		Version: 1,
 		Salt:    "YWJjZGVmZ2hpamtsbW5vcA==",
 		Config:  sampleConfig{Retries: 3, Endpoint: "https://bmclapi2.bangbang93.com", Enabled: true},
 		Accounts: map[string]*sampleAccount{
@@ -74,11 +74,11 @@ func TestMarshalIsReadableAndOrdered(t *testing.T) {
 	}
 	text := string(data)
 	// root scalars must precede tables
-	if strings.Index(text, "db_version") > strings.Index(text, "[config]") {
+	if strings.Index(text, "state_version") > strings.Index(text, "[config]") {
 		t.Errorf("root keys must come before tables:\n%s", text)
 	}
 	for _, want := range []string{
-		`db_version = 2`,
+		`state_version = 1`,
 		"[config]",
 		`endpoint = "https://bmclapi2.bangbang93.com"`,
 		"[accounts.abc]",
@@ -100,7 +100,7 @@ func TestUnmarshalHandWrittenFile(t *testing.T) {
 	// exactly the kind of file a user edits by hand
 	file := `
 # mcli configuration
-db_version = 2
+state_version = 1
 salt = "c2FsdA=="        # base64 salt, do not share
 
 [config]
@@ -130,7 +130,7 @@ jvm_args = [
 	if len(unknown) != 0 {
 		t.Errorf("no unknown keys expected, got %v", unknown)
 	}
-	if doc.Version != 2 || doc.Salt != "c2FsdA==" {
+	if doc.Version != 1 || doc.Salt != "c2FsdA==" {
 		t.Errorf("root scalars = %+v", doc)
 	}
 	if doc.Config.Retries != 5 || !doc.Config.Enabled {
@@ -209,7 +209,7 @@ func TestErrorCases(t *testing.T) {
 
 func TestSetKeyInSectionKeepsEverythingElse(t *testing.T) {
 	file := `# my notes
-db_version = 2
+state_version = 1
 
 [config]
 retries = 3            # keep this comment

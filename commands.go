@@ -72,9 +72,9 @@ func (a *App) cmdLogin(args []string) int {
 		return a.fatal(err)
 	}
 
-	acc, ok := a.DB.Data.Accounts[sess.Profile.ID]
+	acc, ok := a.Store.Data.Accounts[sess.Profile.ID]
 	if !ok || f.boolean("force") {
-		old := a.DB.ActiveAccount()
+		old := a.Store.ActiveAccount()
 		if old != nil && f.boolean("force") {
 			a.Log.Infof("%s", i18n.T("auth.not_you", old.Name))
 		}
@@ -82,26 +82,26 @@ func (a *App) cmdLogin(args []string) int {
 	}
 	// Remember who was active so --no-switch can put them back: adding a second
 	// account should not silently move every later launch onto it.
-	previous := a.DB.ActiveAccount()
+	previous := a.Store.ActiveAccount()
 	a.Log.Infof("%s", i18n.T("auth.storing"))
 	if err := a.storeSession(acc, sess, f.str("label", "")); err != nil {
 		return a.fatal(err)
 	}
 	if f.boolean("no-switch") && previous != nil && previous.UUID != acc.UUID {
-		a.DB.SetActive(previous.UUID)
-		if err := a.DB.Save(); err != nil {
+		a.Store.SetActive(previous.UUID)
+		if err := a.Store.Save(); err != nil {
 			return a.fatal(err)
 		}
 	}
 	a.Log.Printf("%s", i18n.T("auth.logged_in", sess.Profile.Name, sess.Profile.ID))
-	a.Log.Printf("%s", i18n.T("auth.saved_identity", a.DB.StatePath))
-	a.Log.Printf("%s", i18n.T("auth.saved_refresh", a.DB.RefreshPath))
-	a.Log.Printf("%s", i18n.T("auth.saved_session", a.DB.SessionPath))
+	a.Log.Printf("%s", i18n.T("auth.saved_identity", a.Store.StatePath))
+	a.Log.Printf("%s", i18n.T("auth.saved_refresh", a.Store.RefreshPath))
+	a.Log.Printf("%s", i18n.T("auth.saved_session", a.Store.SessionPath))
 	a.Log.Printf("%s", i18n.T("auth.expires", sess.MC.ExpiresAt.Format(time.RFC3339)))
 	if f.boolean("no-switch") && previous != nil && previous.UUID != acc.UUID {
 		a.Log.Printf("%s", i18n.T("auth.active_kept", previous.Name))
 	}
-	a.Log.Printf("%s", i18n.T("auth.accounts_count", len(a.DB.Data.Accounts)))
+	a.Log.Printf("%s", i18n.T("auth.accounts_count", len(a.Store.Data.Accounts)))
 	return 0
 }
 
@@ -122,26 +122,26 @@ func (a *App) cmdLogout(args []string) int {
 		a.Log.Printf("%s", i18n.T("cli.cmd.logout.usage"))
 		return 0
 	}
-	if f.boolean("all") || len(a.DB.Data.Accounts) == 0 {
-		if len(a.DB.Data.Accounts) == 0 {
+	if f.boolean("all") || len(a.Store.Data.Accounts) == 0 {
+		if len(a.Store.Data.Accounts) == 0 {
 			a.Log.Printf("%s", i18n.T("auth.logout_none"))
 			return 0
 		}
-		names := make([]string, 0, len(a.DB.Data.Accounts))
-		for uuid, acc := range a.DB.Data.Accounts {
+		names := make([]string, 0, len(a.Store.Data.Accounts))
+		for uuid, acc := range a.Store.Data.Accounts {
 			names = append(names, acc.Name)
-			a.DB.DropAccount(uuid)
+			a.Store.DropAccount(uuid)
 		}
-		if err := a.DB.Save(); err != nil {
+		if err := a.Store.Save(); err != nil {
 			return a.fatal(err)
 		}
-		if err := a.DB.SaveTokens(); err != nil {
+		if err := a.Store.SaveTokens(); err != nil {
 			return a.fatal(err)
 		}
 		for _, n := range names {
 			a.Log.Printf("%s", i18n.T("auth.logout_done", n))
 		}
-		a.Log.Printf("%s", i18n.T("auth.logout_tokens", a.DB.RefreshPath, a.DB.SessionPath))
+		a.Log.Printf("%s", i18n.T("auth.logout_tokens", a.Store.RefreshPath, a.Store.SessionPath))
 		return 0
 	}
 
@@ -157,15 +157,15 @@ func (a *App) cmdLogout(args []string) int {
 		}
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", target)))
 	}
-	a.DB.DropAccount(acc.UUID)
-	if err := a.DB.Save(); err != nil {
+	a.Store.DropAccount(acc.UUID)
+	if err := a.Store.Save(); err != nil {
 		return a.fatal(err)
 	}
-	if err := a.DB.SaveTokens(); err != nil {
+	if err := a.Store.SaveTokens(); err != nil {
 		return a.fatal(err)
 	}
 	a.Log.Printf("%s", i18n.T("auth.logout_done", acc.Name))
-	a.Log.Printf("%s", i18n.T("auth.logout_tokens", a.DB.RefreshPath, a.DB.SessionPath))
+	a.Log.Printf("%s", i18n.T("auth.logout_tokens", a.Store.RefreshPath, a.Store.SessionPath))
 	return 0
 }
 
@@ -173,10 +173,10 @@ func (a *App) cmdLogout(args []string) int {
 // selector means "the active account".
 func (a *App) findAccount(selector string) *store.Account {
 	if selector == "" {
-		return a.DB.ActiveAccount()
+		return a.Store.ActiveAccount()
 	}
 	s := strings.ToLower(selector)
-	for uuid, acc := range a.DB.Data.Accounts {
+	for uuid, acc := range a.Store.Data.Accounts {
 		if strings.ToLower(uuid) == s ||
 			strings.ToLower(acc.Name) == s ||
 			strings.ToLower(acc.Label) == s ||
@@ -276,7 +276,7 @@ func (a *App) cmdCreate(args []string) int {
 	if err := validateInstanceName(name); err != nil {
 		return a.fatal(err)
 	}
-	if _, exists := a.DB.GetInstance(name); exists && !f.boolean("force") {
+	if _, exists := a.Store.GetInstance(name); exists && !f.boolean("force") {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.exists", name)))
 	}
 	version, err := a.resolveVersion(f.str("version", ""))
@@ -310,8 +310,8 @@ func (a *App) cmdCreate(args []string) int {
 		JvmArgs:   f.lists["jvm-arg"],
 		GameArgs:  f.lists["game-arg"],
 	}
-	a.DB.Data.Instances[name] = inst
-	if err := a.DB.Save(); err != nil {
+	a.Store.Data.Instances[name] = inst
+	if err := a.Store.Save(); err != nil {
 		return a.fatal(err)
 	}
 	a.Log.Printf("%s", i18n.T("inst.create_ok", name, version))
@@ -335,7 +335,7 @@ func (a *App) cmdDelete(args []string) int {
 		return a.usageError("cli.missing_arg", "delete", "<name>")
 	}
 	name := f.args[0]
-	if _, ok := a.DB.GetInstance(name); !ok {
+	if _, ok := a.Store.GetInstance(name); !ok {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", name)))
 	}
 	dir := a.instanceDir(name)
@@ -350,8 +350,8 @@ func (a *App) cmdDelete(args []string) int {
 			return 1
 		}
 	}
-	delete(a.DB.Data.Instances, name)
-	if err := a.DB.Save(); err != nil {
+	delete(a.Store.Data.Instances, name)
+	if err := a.Store.Save(); err != nil {
 		return a.fatal(err)
 	}
 	if !keep {
@@ -386,8 +386,8 @@ func (a *App) cmdRefresh(args []string) int {
 	if !f.boolean("all") {
 		return 0
 	}
-	for _, name := range a.DB.InstanceNames() {
-		inst := a.DB.Data.Instances[name]
+	for _, name := range a.Store.InstanceNames() {
+		inst := a.Store.Data.Instances[name]
 		path := a.Loader(false).JSONPath(inst.Version)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			a.Log.Warnf("%s", err)
@@ -418,17 +418,17 @@ func (a *App) cmdConfig(args []string) int {
 	case "list", "ls", "--list":
 		return a.configList()
 	case "path", "--path":
-		a.Log.Printf("%s", i18n.T("cli.config_path", a.DB.Path))
-		a.Log.Printf("%s", i18n.T("cli.state_path", a.DB.StatePath))
-		a.Log.Printf("%s", i18n.T("cli.refresh_path", a.DB.RefreshPath))
-		a.Log.Printf("%s", i18n.T("cli.session_path", a.DB.SessionPath))
-		a.Log.Printf("%s", i18n.T("cli.last_path", a.DB.LastPath))
+		a.Log.Printf("%s", i18n.T("cli.config_path", a.Store.Path))
+		a.Log.Printf("%s", i18n.T("cli.state_path", a.Store.StatePath))
+		a.Log.Printf("%s", i18n.T("cli.refresh_path", a.Store.RefreshPath))
+		a.Log.Printf("%s", i18n.T("cli.session_path", a.Store.SessionPath))
+		a.Log.Printf("%s", i18n.T("cli.last_path", a.Store.LastPath))
 		return 0
 	case "get":
 		if len(rest) == 0 {
 			return a.usageError("cli.missing_arg", "config get", "<key>")
 		}
-		value, err := a.DB.Cfg().Get(rest[0])
+		value, err := a.Store.Cfg().Get(rest[0])
 		if err != nil {
 			return a.fatal(err)
 		}
@@ -438,25 +438,25 @@ func (a *App) cmdConfig(args []string) int {
 		if len(rest) < 2 {
 			return a.usageError("cli.missing_arg", "config set", "<key> <value>")
 		}
-		if err := a.DB.Cfg().Set(rest[0], strings.Join(rest[1:], " ")); err != nil {
+		if err := a.Store.Cfg().Set(rest[0], strings.Join(rest[1:], " ")); err != nil {
 			return a.fatal(err)
 		}
 		// patch mcli.toml in place so comments and unrelated keys survive
-		if err := a.DB.SaveConfigValue(rest[0]); err != nil {
+		if err := a.Store.SaveConfigValue(rest[0]); err != nil {
 			return a.fatal(err)
 		}
-		value, _ := a.DB.Cfg().Get(rest[0])
+		value, _ := a.Store.Cfg().Get(rest[0])
 		a.Log.Printf("%s", i18n.T("cfg.set_ok", rest[0], value))
 		return 0
 	case "unset":
 		if len(rest) == 0 {
 			return a.usageError("cli.missing_arg", "config unset", "<key>")
 		}
-		value, err := a.DB.Cfg().Reset(rest[0])
+		value, err := a.Store.Cfg().Reset(rest[0])
 		if err != nil {
 			return a.fatal(err)
 		}
-		if err := a.DB.SaveConfigValue(rest[0]); err != nil {
+		if err := a.Store.SaveConfigValue(rest[0]); err != nil {
 			return a.fatal(err)
 		}
 		a.Log.Printf("%s", i18n.T("cfg.unset_ok", rest[0], value))
@@ -469,7 +469,7 @@ func (a *App) cmdConfig(args []string) int {
 func (a *App) configList() int {
 	key, val := 24, 26
 	a.Log.Printf("%s", i18n.T("cfg.list_header", "KEY", "VALUE", "DESCRIPTION"))
-	rows := a.DB.Cfg().Rows()
+	rows := a.Store.Cfg().Rows()
 	for _, r := range rows {
 		v := r[1]
 		if v == "" {
@@ -504,7 +504,7 @@ func (a *App) cmdJava(args []string) int {
 }
 
 func (a *App) javaList() int {
-	runtimes := java.ScanRuntimes(a.DB.Cfg(), a.Paths, a.Log)
+	runtimes := java.ScanRuntimes(a.Store.Cfg(), a.Paths, a.Log)
 	if len(runtimes) == 0 {
 		a.Log.Printf("%s", i18n.T("java.none_installed"))
 		return 0
@@ -543,7 +543,7 @@ func (a *App) javaInstall(args []string) int {
 			major = m
 		}
 	}
-	dest := a.DB.Cfg().JavaDir
+	dest := a.Store.Cfg().JavaDir
 	installer := a.JavaInstaller(f.boolean("force"))
 	if !f.boolean("archive") {
 		exe, err := installer.Install(component, major)
@@ -585,7 +585,7 @@ func (a *App) javaWhich(args []string) int {
 	}
 	need := java.RequiredMajor(v.Effective(), versionID, a.Log)
 	a.Log.Printf("%s", i18n.T("java.required_major", need))
-	runtimes := java.ScanRuntimes(a.DB.Cfg(), a.Paths, a.Log)
+	runtimes := java.ScanRuntimes(a.Store.Cfg(), a.Paths, a.Log)
 	rt := java.Pick(runtimes, need)
 	if rt == nil {
 		a.Log.Printf("%s", i18n.T("java.none_found", versionID, need))
@@ -659,8 +659,8 @@ func (a *App) autoCreateInstance(name string) (*store.Instance, error) {
 		return nil, fmt.Errorf("%s", i18n.T("launch.unknown_target", name, version, name))
 	}
 	inst := &store.Instance{Name: version, Version: version, CreatedAt: time.Now()}
-	a.DB.Data.Instances[version] = inst
-	if err := a.DB.Save(); err != nil {
+	a.Store.Data.Instances[version] = inst
+	if err := a.Store.Save(); err != nil {
 		return nil, err
 	}
 	a.Log.Printf("%s", i18n.T("launch.auto_create", version))

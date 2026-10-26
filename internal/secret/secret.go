@@ -60,7 +60,7 @@ func DeriveKey(identity string, salt []byte) ([]byte, error) {
 }
 
 // NewSalt returns fresh salt bytes for a brand-new account (also doubles as a
-// "this DB was created here" marker).
+// "this home was created here" marker).
 func NewSalt() ([]byte, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

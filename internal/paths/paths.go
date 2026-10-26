@@ -44,7 +44,6 @@ const (
 	RefreshFile = "refresh.toml"
 	SessionFile = "session.toml"
 	LastFile    = "last.toml"
-	LegacyFile  = "mcli.db"
 )
 
 // Paths holds every resolved directory for one mcli home.
@@ -84,9 +83,6 @@ func (p Paths) Session() string { return filepath.Join(p.Home, SessionFile) }
 
 // Last is the previous-launch file (TOML, 0600).
 func (p Paths) Last() string { return filepath.Join(p.Home, LastFile) }
-
-// LegacyDB is the pre-TOML JSON file, read once during migration.
-func (p Paths) LegacyDB() string { return filepath.Join(p.Home, LegacyFile) }
 
 // JDKDir holds java runtimes installed by mcli.
 func (p Paths) JDKDir() string { return filepath.Join(p.Home, "jdk") }

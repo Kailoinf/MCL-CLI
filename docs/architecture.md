@@ -29,7 +29,7 @@ the CLI packages. `i18n` depends on nothing.
 mcli launch <instance>
   1. resolve instance → version id → per-instance game dir
   2. mcv.ManifestStore.Get(force=false)
-        cached in mcli.db (manifest_cache), refreshed when older than
+        cached in state.toml (manifest_cache), refreshed when older than
         manifest_ttl_hours (silently when manifest_auto_refresh is on)
   3. mcv.Loader.Lookup(versionID, entry.URL)
         versions/<id>/<id>.json, downloaded if missing, then inheritsFrom
@@ -44,7 +44,7 @@ mcli launch <instance>
         then a 6-worker download pool
   7. auth: stored session, refreshed when it expires within 5 minutes
   8. launch.Prep() → memory flags + JSON jvm/game args + placeholders + classpath
-  9. store last launch in mcli.db (for --last), spawn java, stream the game's
+  9. store last launch in last.toml (for --last), spawn java, stream the game's
      stdout/stderr into ~/.mcl-cli/logs/game-<instance>-<timestamp>.log
 ```
 
@@ -68,7 +68,7 @@ mcli.toml       [config]        ← the config table (see internal/config)
                 comments, ordering and extra keys survive; no secrets, so it is
                 portable between machines
 
-state.toml      db_version      machine-owned, 0600, no secrets → portable
+state.toml      state_version      machine-owned, 0600, no secrets → portable
                 accounts{}      ← keyed by Minecraft UUID: name, xuid, label,
                                   active flag, timestamps (identity only)
                 instances{}     ← name → {version, per-instance java/xmx/xms/args}
@@ -89,8 +89,10 @@ last.toml       the previous launch (instance, version, java, xmx/xms, window
 cache/version_manifest_v2.json   the raw manifest body, exactly as downloaded
 ```
 
-`db_version` is 3: 1 was the pre-TOML JSON database (imported once), 2 moved it
-into TOML, 3 split the credentials out of `state.toml`.
+`state_version` is 1. There is exactly one shape and no migration path: mcli has
+no users on an older one, so a file from anywhere else is either this shape or
+not supported at all. A file written by a *newer* mcli keeps its number and the
+CLI warns instead of garbling it.
 
 ## Taking over an existing .minecraft
 

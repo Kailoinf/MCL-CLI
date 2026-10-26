@@ -42,11 +42,11 @@ func (a *App) cmdDoctor(args []string) int {
 	case len(f.args) == 1:
 		problems += a.doctorInstance(f.args[0], f.boolean("deep"))
 	case f.boolean("all"):
-		for _, name := range a.DB.InstanceNames() {
+		for _, name := range a.Store.InstanceNames() {
 			problems += a.doctorInstance(name, f.boolean("deep"))
 		}
 	default:
-		if n := len(a.DB.InstanceNames()); n > 0 {
+		if n := len(a.Store.InstanceNames()); n > 0 {
 			a.Log.Printf("%s", i18n.T("doc.hint_instance", n))
 		}
 	}
@@ -63,17 +63,17 @@ func (a *App) cmdDoctor(args []string) int {
 func (a *App) doctorEnvironment() int {
 	problems := 0
 	a.Log.Printf("%s", i18n.T("doc.env_header"))
-	a.Log.Printf("%s", i18n.T("doc.version_line", Version, a.DB.Data.DBVersion))
+	a.Log.Printf("%s", i18n.T("doc.version_line", Version, a.Store.Data.StateVersion))
 	for _, line := range []struct {
 		key  string
 		path string
 	}{
 		{"cli.mcl_home", a.Paths.Home},
-		{"cli.config_path", a.DB.Path},
-		{"cli.state_path", a.DB.StatePath},
-		{"cli.refresh_path", a.DB.RefreshPath},
-		{"cli.session_path", a.DB.SessionPath},
-		{"cli.last_path", a.DB.LastPath},
+		{"cli.config_path", a.Store.Path},
+		{"cli.state_path", a.Store.StatePath},
+		{"cli.refresh_path", a.Store.RefreshPath},
+		{"cli.session_path", a.Store.SessionPath},
+		{"cli.last_path", a.Store.LastPath},
 		{"cli.minecraft_dir", a.MinecraftDir()},
 	} {
 		a.Log.Printf("%s", i18n.T(line.key, line.path))
@@ -84,7 +84,7 @@ func (a *App) doctorEnvironment() int {
 	a.Log.Printf("%s", i18n.T("auth.summary", a.accountSummary()))
 
 	// java: what is installed and what the newest recorded launch wanted
-	runtimes := java.ScanRuntimes(a.DB.Cfg(), a.Paths, a.Log)
+	runtimes := java.ScanRuntimes(a.Store.Cfg(), a.Paths, a.Log)
 	if len(runtimes) == 0 {
 		a.Log.Printf("%s", i18n.T("java.none_installed"))
 		problems++
@@ -98,7 +98,7 @@ func (a *App) doctorEnvironment() int {
 	}
 
 	// manifest cache
-	if cache := a.DB.Data.Manifest; cache != nil {
+	if cache := a.Store.Data.Manifest; cache != nil {
 		age := time.Since(cache.FetchedAt).Round(time.Minute)
 		versions := 0
 		if man, err := a.ManifestStore().Get(false); err == nil {
@@ -143,7 +143,7 @@ func latestGameLog(dir string) string {
 // doctorInstance reports on one instance and returns the number of problems.
 func (a *App) doctorInstance(name string, deep bool) int {
 	a.Log.Printf("%s", i18n.T("doc.instance_header", name))
-	inst, ok := a.DB.GetInstance(name)
+	inst, ok := a.Store.GetInstance(name)
 	if !ok {
 		a.Log.Printf("%s", i18n.T("inst.not_found", name))
 		return 1
@@ -161,7 +161,7 @@ func (a *App) doctorInstance(name string, deep bool) int {
 		return 1
 	}
 	need := java.RequiredMajor(eff, inst.Version, a.Log)
-	rt := java.Pick(java.ScanRuntimes(a.DB.Cfg(), a.Paths, a.Log), need)
+	rt := java.Pick(java.ScanRuntimes(a.Store.Cfg(), a.Paths, a.Log), need)
 	switch {
 	case rt != nil:
 		a.Log.Printf("%s", i18n.T("doc.required_java", need, rt.Path, rt.Major))
@@ -267,7 +267,7 @@ func (a *App) cmdRepair(args []string) int {
 		return a.usageError("cli.unexpected_arg", f.args[1], "repair")
 	}
 	name := f.args[0]
-	inst, ok := a.DB.GetInstance(name)
+	inst, ok := a.Store.GetInstance(name)
 	if !ok {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", name)))
 	}
@@ -319,7 +319,7 @@ func (a *App) cmdRepair(args []string) int {
 	fetched := 0
 	var written int64
 	if len(wanted) > 0 {
-		if !a.Yeseverything && a.DB.Cfg().ConfirmLargeDownload {
+		if !a.Yeseverything && a.Store.Cfg().ConfirmLargeDownload {
 			ok, err := a.confirmBatch(name, len(wanted), mcv.MissingBytes(wanted))
 			if err != nil {
 				return a.fatal(err)
@@ -364,7 +364,7 @@ func (a *App) cmdRepair(args []string) int {
 
 	// A repaired install that cannot run is not repaired: fix the runtime too.
 	need := java.RequiredMajor(eff, inst.Version, a.Log)
-	pinned := firstNonEmpty(inst.Java, a.DB.Cfg().JavaPath)
+	pinned := firstNonEmpty(inst.Java, a.Store.Cfg().JavaPath)
 	if _, err := a.ensureJava(eff, inst.Version, need, pinned, false); err != nil {
 		return a.fatal(err)
 	}

@@ -36,7 +36,7 @@ func (a *App) cmdAccount(args []string) int {
 }
 
 func (a *App) accountList() int {
-	names := a.DB.AccountNames()
+	names := a.Store.AccountNames()
 	if len(names) == 0 {
 		a.Log.Printf("%s", i18n.T("auth.no_account"))
 		a.Log.Printf("%s", i18n.T("auth.no_account_hint"))
@@ -46,7 +46,7 @@ func (a *App) accountList() int {
 		padRight("", 1), padRight("NAME", 18), padRight("UUID", 36),
 		padRight("LABEL", 18), "TOKEN EXPIRES"))
 	for _, uuid := range names {
-		acc := a.DB.Data.Accounts[uuid]
+		acc := a.Store.Data.Accounts[uuid]
 		marker := " "
 		if acc.Active {
 			marker = "*"
@@ -62,7 +62,7 @@ func (a *App) accountList() int {
 // tokenState describes one account's stored credentials without ever printing
 // one: when the Minecraft token expires, and whether a refresh token is there.
 func (a *App) tokenState(acc *store.Account) string {
-	tok, session := a.DB.Tokens(acc.UUID)
+	tok, session := a.Store.Tokens(acc.UUID)
 	if tok.RefreshEnc == "" {
 		return i18n.T("auth.state_no_token")
 	}
@@ -111,12 +111,12 @@ func (a *App) accountUse(args []string) int {
 	if acc == nil {
 		return a.fatal(fmt.Errorf("%s", i18n.T("auth.account_not_found", f.args[0])))
 	}
-	a.DB.SetActive(acc.UUID)
-	if err := a.DB.Save(); err != nil {
+	a.Store.SetActive(acc.UUID)
+	if err := a.Store.Save(); err != nil {
 		return a.fatal(err)
 	}
 	a.Log.Printf("%s", i18n.T("auth.active_set", acc.Name, acc.UUID))
-	tok, _ := a.DB.Tokens(acc.UUID)
+	tok, _ := a.Store.Tokens(acc.UUID)
 	if tok.RefreshEnc == "" {
 		a.Log.Warnf("%s", i18n.T("auth.state_no_token"))
 	}
@@ -126,9 +126,9 @@ func (a *App) accountUse(args []string) int {
 // accountSummary is a one-line description used by `mcli version` and the
 // doctor command: which account will be used, or that there is none.
 func (a *App) accountSummary() string {
-	acc := a.DB.ActiveAccount()
+	acc := a.Store.ActiveAccount()
 	if acc == nil {
-		if n := len(a.DB.Data.Accounts); n > 0 {
+		if n := len(a.Store.Data.Accounts); n > 0 {
 			return i18n.T("auth.summary_none_active", n)
 		}
 		return i18n.T("auth.no_account")

@@ -54,14 +54,14 @@ func (a *App) cmdLaunch(args []string) int {
 	// `mcli launch` with nothing else to go on replays the previous launch:
 	// that is the whole point of remembering it.
 	if !lastFlag && len(f.args) == 0 && !f.has("version") {
-		if last, err := a.DB.Last(); err == nil && last != nil {
+		if last, err := a.Store.Last(); err == nil && last != nil {
 			lastFlag = true
 			a.Log.Infof("%s", i18n.T("launch.no_target_last", last.Instance))
 		}
 	}
 	switch {
 	case lastFlag:
-		last, err := a.DB.Last()
+		last, err := a.Store.Last()
 		if err != nil {
 			return a.fatal(err)
 		}
@@ -82,7 +82,7 @@ func (a *App) cmdLaunch(args []string) int {
 		width, height = last.Width, last.Height
 	case len(f.args) > 0:
 		instName = f.args[0]
-		inst, ok := a.DB.GetInstance(instName)
+		inst, ok := a.Store.GetInstance(instName)
 		if !ok {
 			// The name may be a version id: launchers let you start a version
 			// directly, so create the matching instance instead of refusing.
@@ -111,8 +111,8 @@ func (a *App) cmdLaunch(args []string) int {
 		return a.fatal(fmt.Errorf("%s", i18n.T("launch.no_source", instName)))
 	}
 
-	xmx := firstNonEmpty(f.str("xmx", ""), base.Xmx, a.DB.Cfg().DefaultXmx)
-	xms := firstNonEmpty(f.str("xms", ""), base.Xms, a.DB.Cfg().DefaultXms)
+	xmx := firstNonEmpty(f.str("xmx", ""), base.Xmx, a.Store.Cfg().DefaultXmx)
+	xms := firstNonEmpty(f.str("xms", ""), base.Xms, a.Store.Cfg().DefaultXms)
 	if err := launch.ValidateMemory(xmx); err != nil {
 		return a.fatal(err)
 	}
@@ -120,7 +120,7 @@ func (a *App) cmdLaunch(args []string) int {
 		return a.fatal(err)
 	}
 	jvmArgs := append(append([]string{}, base.JvmArgs...), f.lists["jvm-arg"]...)
-	jvmArgs = append(jvmArgs, splitArgs(a.DB.Cfg().ExtraJvmArgs)...)
+	jvmArgs = append(jvmArgs, splitArgs(a.Store.Cfg().ExtraJvmArgs)...)
 	gameArgs := append(append([]string{}, base.GameArgs...), f.lists["game-arg"]...)
 	width, err = f.int("width", width)
 	if err != nil {
@@ -178,7 +178,7 @@ func (a *App) cmdLaunch(args []string) int {
 
 	// --- java ------------------------------------------------------------
 	need := java.RequiredMajor(eff, versionID, a.Log)
-	pinned := firstNonEmpty(f.str("java", ""), base.Java, a.DB.Cfg().JavaPath)
+	pinned := firstNonEmpty(f.str("java", ""), base.Java, a.Store.Cfg().JavaPath)
 	rt, err := a.ensureJava(eff, versionID, need, pinned, dryRun)
 	if err != nil {
 		return a.fatal(err)
@@ -219,7 +219,7 @@ func (a *App) cmdLaunch(args []string) int {
 	// --- command line ----------------------------------------------------
 	cmd, err := launch.Prep(launch.Options{
 		Root:            a.MinecraftDir(),
-		VersionsDir:     a.DB.Cfg().VersionsDir,
+		VersionsDir:     a.Store.Cfg().VersionsDir,
 		InstanceName:    instName,
 		Version:         eff,
 		VersionID:       versionID,
@@ -227,7 +227,7 @@ func (a *App) cmdLaunch(args []string) int {
 		Auth:            authBlock,
 		Xmx:             xmx,
 		Xms:             xms,
-		MemoryPercent:   a.DB.Cfg().AutoMemoryPercent,
+		MemoryPercent:   a.Store.Cfg().AutoMemoryPercent,
 		ExtraJVMArgs:    jvmArgs,
 		ExtraGameArgs:   gameArgs,
 		Server:          serverFlag,
@@ -265,19 +265,19 @@ func (a *App) cmdLaunch(args []string) int {
 		GameDir:  cmd.GameDir,
 		At:       time.Now(),
 	}
-	if inst, ok := a.DB.GetInstance(instName); ok {
+	if inst, ok := a.Store.GetInstance(instName); ok {
 		inst.LastPlayed = time.Now()
 		if inst.Version == "" {
 			inst.Version = versionID
 		}
 	}
 	if !dryRun {
-		if err := a.DB.SaveLast(last); err != nil {
+		if err := a.Store.SaveLast(last); err != nil {
 			a.Log.Warnf("%s", err)
 		} else {
 			a.Log.Debugf("%s", i18n.T("launch.saved_args"))
 		}
-		if err := a.DB.Save(); err != nil {
+		if err := a.Store.Save(); err != nil {
 			a.Log.Warnf("%s", err)
 		}
 	}
@@ -299,7 +299,7 @@ func (a *App) cmdLaunch(args []string) int {
 	a.Log.Printf("%s", i18n.T("launch.log_file", gameLogPath))
 	a.Log.Debugf("%s", i18n.T("launch.cmdline", cmd.CommandLine()))
 
-	wait := f.boolean("wait") || !a.DB.Cfg().CloseAfterLaunch
+	wait := f.boolean("wait") || !a.Store.Cfg().CloseAfterLaunch
 	a.Log.Printf("%s", i18n.T("launch.spawning"))
 	pid, code, err := cmd.Run(wait, gameLog)
 	if err != nil {
@@ -320,7 +320,7 @@ func (a *App) cmdLaunch(args []string) int {
 // ensureJava picks a runtime for the required major, offering to download one
 // when the machine has none.
 func (a *App) ensureJava(v *mcv.Version, versionID string, need int, pinned string, dryRun bool) (*java.Runtime, error) {
-	cfg := a.DB.Cfg()
+	cfg := a.Store.Cfg()
 	if pinned != "" {
 		rt, err := java.Probe(pinned, "config")
 		if err != nil {

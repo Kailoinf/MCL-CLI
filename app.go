@@ -29,7 +29,7 @@ const LauncherName = "mcli"
 // App is the shared command context.
 type App struct {
 	Paths paths.Paths
-	DB    *store.DB
+	Store *store.Store
 	Log   *logx.Logger
 
 	Yeseverything bool // --yes: never prompt
@@ -42,8 +42,8 @@ type App struct {
 	started time.Time
 }
 
-// newApp loads paths, mcli.db, the language and the logger. Global flags are
-// applied here, which is why language is re-applied after the DB is read.
+// newApp loads paths, mcli.toml, the language and the logger. Global flags are
+// applied here, which is why language is re-applied after the store is read.
 func newApp(glob *flags) (*App, error) {
 	p, err := paths.Resolve()
 	if err != nil {
@@ -57,7 +57,7 @@ func newApp(glob *flags) (*App, error) {
 		configPath = v
 	}
 	dir := filepath.Dir(configPath)
-	db, err := store.Open(store.Files{
+	st, err := store.Open(store.Files{
 		Config:  configPath,
 		State:   filepath.Join(dir, paths.StateFile),
 		Refresh: filepath.Join(dir, paths.RefreshFile),
@@ -68,8 +68,8 @@ func newApp(glob *flags) (*App, error) {
 		return nil, err
 	}
 
-	// language: --lang wins, then mcli.db, then the environment
-	lang := db.Cfg().Language
+	// language: --lang wins, then mcli.toml, then the environment
+	lang := st.Cfg().Language
 	if v, ok := glob.values["lang"]; ok && v != "" {
 		lang = v
 	}
@@ -77,11 +77,11 @@ func newApp(glob *flags) (*App, error) {
 		return nil, err
 	}
 
-	termLevel, err := logx.ParseLevel(db.Cfg().LogLevelTerminal)
+	termLevel, err := logx.ParseLevel(st.Cfg().LogLevelTerminal)
 	if err != nil {
 		return nil, err
 	}
-	fileLevel, err := logx.ParseLevel(db.Cfg().LogLevelFile)
+	fileLevel, err := logx.ParseLevel(st.Cfg().LogLevelFile)
 	if err != nil {
 		return nil, err
 	}
@@ -96,26 +96,23 @@ func newApp(glob *flags) (*App, error) {
 		return nil, err
 	}
 
-	cfg := db.Cfg()
+	cfg := st.Cfg()
 	if cfg.JavaDir == "" {
 		cfg.JavaDir = p.JDKDir()
-		if err := db.SaveConfigValue("java_dir"); err != nil {
-			log.Warnf("%s", i18n.T("err.db.no_save", err))
+		if err := st.SaveConfigValue("java_dir"); err != nil {
+			log.Warnf("%s", i18n.T("err.state.no_save", err))
 		}
 	}
-	if from := db.MigratedFrom(); from != "" {
-		log.Infof("%s", i18n.T("db.migrated", from, db.Path, db.StatePath))
+	if st.Data.StateVersion > store.StateVersion {
+		log.Warnf("%s", i18n.T("state.too_new", st.StatePath, st.Data.StateVersion, store.StateVersion))
 	}
-	if db.Data.DBVersion > store.DBVersion {
-		log.Warnf("%s", i18n.T("db.too_new", db.StatePath, db.Data.DBVersion, store.DBVersion))
-	}
-	for _, key := range db.UnknownKeys {
-		log.Warnf("%s", i18n.T("db.unknown_key", key))
+	for _, key := range st.UnknownKeys {
+		log.Warnf("%s", i18n.T("state.unknown_key", key))
 	}
 
 	app := &App{
 		Paths:         p,
-		DB:            db,
+		Store:         st,
 		Log:           log,
 		Yeseverything: glob.boolean("yes"),
 		Health:        dl.NewSourceHealth(3),
@@ -129,13 +126,13 @@ func (a *App) Close() { a.Log.Close() }
 
 // Mapper builds the download URL mapper from the current config.
 func (a *App) Mapper() mirror.Mapper {
-	cfg := a.DB.Cfg()
+	cfg := a.Store.Cfg()
 	return mirror.Mapper{Endpoint: cfg.BmclapiEndpoint, Fallback: cfg.MirrorFallback}
 }
 
 // Policy builds the download policy from the current config.
 func (a *App) Policy() dl.Policy {
-	cfg := a.DB.Cfg()
+	cfg := a.Store.Cfg()
 	return dl.Policy{
 		Retries: cfg.DownloadRetryTimes,
 		Timeout: time.Duration(cfg.HTTPTimeout) * time.Second,
@@ -147,21 +144,21 @@ func (a *App) Policy() dl.Policy {
 }
 
 // MinecraftDir is the game root.
-func (a *App) MinecraftDir() string { return a.DB.Cfg().MinecraftDir }
+func (a *App) MinecraftDir() string { return a.Store.Cfg().MinecraftDir }
 
 // VersionsDir is the version/instance directory inside the game root.
 func (a *App) VersionsDir() string {
-	dir := a.DB.Cfg().VersionsDir
+	dir := a.Store.Cfg().VersionsDir
 	if dir == "" {
 		dir = "versions"
 	}
 	return filepath.Join(a.MinecraftDir(), dir)
 }
 
-// ManifestStore wires the manifest cache to mcli.db.
+// ManifestStore wires the manifest cache to state.toml.
 func (a *App) ManifestStore() *mcv.ManifestStore {
 	return &mcv.ManifestStore{
-		DB:        a.DB,
+		Store:     a.Store,
 		Mapper:    a.Mapper(),
 		Policy:    a.Policy(),
 		Log:       a.Log,
@@ -171,7 +168,7 @@ func (a *App) ManifestStore() *mcv.ManifestStore {
 
 // ClientID is the OAuth client id used for the device-code flow.
 func (a *App) ClientID() string {
-	if id := a.DB.Cfg().AuthClientID; id != "" {
+	if id := a.Store.Cfg().AuthClientID; id != "" {
 		return id
 	}
 	return auth.ClientID
@@ -192,7 +189,7 @@ func (a *App) Loader(dryRun bool) mcv.Loader {
 func (a *App) Installer(dryRun bool) mcv.Installer {
 	return mcv.Installer{
 		Root:        a.MinecraftDir(),
-		VersionsDir: a.DB.Cfg().VersionsDir,
+		VersionsDir: a.Store.Cfg().VersionsDir,
 		Mapper:      a.Mapper(),
 		Policy:      a.Policy(),
 		Log:         a.Log,
@@ -211,7 +208,7 @@ func (a *App) JavaInstaller(force bool) java.Installer {
 		Mapper:   a.Mapper(),
 		Policy:   a.Policy(),
 		Log:      a.Log,
-		DestRoot: a.DB.Cfg().JavaDir,
+		DestRoot: a.Store.Cfg().JavaDir,
 		Workers:  6,
 		Force:    force,
 		Confirm: func(desc string, files int, total int64) (bool, error) {
@@ -224,7 +221,7 @@ func (a *App) JavaInstaller(force bool) java.Installer {
 // through the standard environment variables.
 func (a *App) AuthClient(timeout time.Duration) *auth.Client {
 	if timeout <= 0 {
-		timeout = time.Duration(a.DB.Cfg().HTTPTimeout) * time.Second
+		timeout = time.Duration(a.Store.Cfg().HTTPTimeout) * time.Second
 	}
 	client := auth.NewClient(timeout, a.Log)
 	client.ClientID = a.ClientID()
@@ -239,7 +236,7 @@ func (a *App) AuthClient(timeout time.Duration) *auth.Client {
 
 // confirmFile asks about a single large file.
 func (a *App) confirmFile(desc string, size int64) (bool, error) {
-	if a.Yeseverything || !a.DB.Cfg().ConfirmLargeDownload {
+	if a.Yeseverything || !a.Store.Cfg().ConfirmLargeDownload {
 		return true, nil
 	}
 	return a.prompt(i18n.T("dl.confirm_large", desc, humanBytes(size)))
@@ -247,10 +244,10 @@ func (a *App) confirmFile(desc string, size int64) (bool, error) {
 
 // confirmBatch asks once about a batch of downloads.
 func (a *App) confirmBatch(desc string, files int, total int64) (bool, error) {
-	if a.Yeseverything || !a.DB.Cfg().ConfirmLargeDownload {
+	if a.Yeseverything || !a.Store.Cfg().ConfirmLargeDownload {
 		return true, nil
 	}
-	if total < int64(a.DB.Cfg().LargeDownloadMB)*1024*1024 {
+	if total < int64(a.Store.Cfg().LargeDownloadMB)*1024*1024 {
 		return true, nil
 	}
 	return a.prompt(i18n.T("dl.confirm_batch", desc, files, humanBytes(total)))
@@ -291,15 +288,15 @@ func humanBytes(n int64) string {
 
 // activeAccount returns the selected account or an error when there is none.
 func (a *App) activeAccount() (*store.Account, error) {
-	acc := a.DB.ActiveAccount()
+	acc := a.Store.ActiveAccount()
 	if acc == nil {
-		if len(a.DB.Data.Accounts) == 0 {
+		if len(a.Store.Data.Accounts) == 0 {
 			return nil, fmt.Errorf("%s", i18n.T("auth.no_account"))
 		}
-		names := a.DB.AccountNames()
-		acc = a.DB.Data.Accounts[names[0]]
-		a.DB.SetActive(acc.UUID)
-		if err := a.DB.Save(); err != nil {
+		names := a.Store.AccountNames()
+		acc = a.Store.Data.Accounts[names[0]]
+		a.Store.SetActive(acc.UUID)
+		if err := a.Store.Save(); err != nil {
 			return nil, err
 		}
 	}
@@ -309,11 +306,11 @@ func (a *App) activeAccount() (*store.Account, error) {
 // session returns a usable Minecraft session, refreshing the token when the
 // stored one is close to expiry.
 func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error) {
-	key, err := a.DB.AccountKey(acc)
+	key, err := a.Store.AccountKey(acc)
 	if err != nil {
 		return nil, nil, err
 	}
-	_, stored := a.DB.Tokens(acc.UUID)
+	_, stored := a.Store.Tokens(acc.UUID)
 	client := a.AuthClient(0)
 	if stored.MCTokenEnc != "" && time.Until(stored.MCTokenExp) > 5*time.Minute {
 		mcToken, err := secret.Decrypt(key, stored.MCTokenEnc)
@@ -335,7 +332,7 @@ func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error)
 			a.Log.Debugf("%s", i18n.T("auth.refreshing"))
 		}
 	}
-	refreshEnc, err := secret.Decrypt(key, a.DB.Data.Refresh[acc.UUID].RefreshEnc)
+	refreshEnc, err := secret.Decrypt(key, a.Store.Data.Refresh[acc.UUID].RefreshEnc)
 	if err != nil || len(refreshEnc) == 0 {
 		return nil, nil, fmt.Errorf("%s", i18n.T("auth.refresh_failed", err))
 	}
@@ -354,10 +351,10 @@ func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error)
 // session.toml. Each credential gets its own file so a short-lived token never
 // sits in the same document as the long-lived one.
 func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string) error {
-	if err := a.DB.SetAccountSalt(acc); err != nil {
+	if err := a.Store.SetAccountSalt(acc); err != nil {
 		return err
 	}
-	key, err := a.DB.AccountKey(acc)
+	key, err := a.Store.AccountKey(acc)
 	if err != nil {
 		return err
 	}
@@ -384,18 +381,18 @@ func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string)
 		acc.Label = "ms:" + acc.Name
 	}
 	if oldUUID != "" && oldUUID != acc.UUID {
-		a.DB.DropAccount(oldUUID)
+		a.Store.DropAccount(oldUUID)
 	}
-	tok, session := a.DB.Tokens(acc.UUID)
+	tok, session := a.Store.Tokens(acc.UUID)
 	tok.RefreshEnc = refreshEnc
 	session.MCTokenEnc = mcEnc
 	session.MCTokenExp = sess.MC.ExpiresAt
-	a.DB.Data.Accounts[acc.UUID] = acc
-	a.DB.SetActive(acc.UUID)
-	if err := a.DB.Save(); err != nil {
+	a.Store.Data.Accounts[acc.UUID] = acc
+	a.Store.SetActive(acc.UUID)
+	if err := a.Store.Save(); err != nil {
 		return err
 	}
-	return a.DB.SaveTokens()
+	return a.Store.SaveTokens()
 }
 
 // authFor builds the placeholder auth block for a launch.

@@ -24,12 +24,10 @@ package store
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/Kailoinf/MCL-CLI/internal/config"
@@ -38,10 +36,11 @@ import (
 	"github.com/Kailoinf/MCL-CLI/internal/toml"
 )
 
-// DBVersion is bumped when the on-disk shape changes incompatibly: 2 moved the
-// JSON database into TOML, 3 split the credentials out into refresh.toml and
-// session.toml.
-const DBVersion = 3
+// StateVersion is the shape of state.toml this build writes. There is no
+// migration path and none is wanted: mcli has no users on an older shape, so the
+// next save simply writes the current one. A file written by a *newer* mcli keeps
+// its number, and the CLI warns about it instead of garbling it.
+const StateVersion = 1
 
 // ConfigSection is the TOML table holding the config table in mcli.toml.
 const ConfigSection = "config"
@@ -111,37 +110,13 @@ type ManifestCache struct {
 	File      string    `toml:"file" json:"file"` // absolute path of the cached JSON
 }
 
-// stateFile is the on-disk shape of state.toml.
+// stateFile is the on-disk shape of state.toml. It holds identity only: every
+// credential lives in refresh.toml / session.toml.
 type stateFile struct {
-	DBVersion int                  `toml:"db_version"`
-	Accounts  map[string]*Account  `toml:"accounts"`
-	Instances map[string]*Instance `toml:"instances"`
-	Manifest  *ManifestCache       `toml:"manifest_cache,omitempty"`
-}
-
-// stateFileV2 is the pre-split shape, where every account carried its own
-// encrypted tokens. Read once, migrated, never written again.
-type stateFileV2 struct {
-	DBVersion int                       `toml:"db_version"`
-	Accounts  map[string]*legacyAccount `toml:"accounts"`
-	Instances map[string]*Instance      `toml:"instances"`
-	Manifest  *ManifestCache            `toml:"manifest_cache,omitempty"`
-}
-
-// legacyAccount is the account record used before the credential split (and by
-// the pre-TOML JSON database): identity and tokens in one place.
-type legacyAccount struct {
-	Name       string    `toml:"name" json:"name"`
-	UUID       string    `toml:"uuid" json:"uuid"`
-	XUID       string    `toml:"xuid" json:"xuid"`
-	Label      string    `toml:"label" json:"label"`
-	TokenSalt  string    `toml:"token_salt" json:"token_salt"`
-	RefreshEnc string    `toml:"refresh_token_enc" json:"refresh_token_enc"`
-	MCTokenEnc string    `toml:"mc_token_enc" json:"mc_token_enc"`
-	MCTokenExp time.Time `toml:"mc_token_expires" json:"mc_token_expires"`
-	Active     bool      `toml:"active" json:"active"`
-	AddedAt    time.Time `toml:"added_at" json:"added_at"`
-	LastLogin  time.Time `toml:"last_login" json:"last_login"`
+	StateVersion int                  `toml:"state_version"`
+	Accounts     map[string]*Account  `toml:"accounts"`
+	Instances    map[string]*Instance `toml:"instances"`
+	Manifest     *ManifestCache       `toml:"manifest_cache,omitempty"`
 }
 
 // refreshFile is the on-disk shape of refresh.toml.
@@ -160,11 +135,11 @@ type configFile struct {
 }
 
 // Data is the merged view of the config, state, refresh and session documents.
-// The previous launch is not part of it — see DB.Last / DB.SaveLast.
+// The previous launch is not part of it — see Store.Last / Store.SaveLast.
 type Data struct {
-	DBVersion int
-	Config    config.Config
-	Accounts  map[string]*Account
+	StateVersion int
+	Config       config.Config
+	Accounts     map[string]*Account
 	// Refresh and Session are keyed by account UUID.
 	Refresh   map[string]*TokenRecord
 	Session   map[string]*SessionRecord
@@ -181,8 +156,8 @@ type Files struct {
 	Last    string
 }
 
-// DB is an open set of documents.
-type DB struct {
+// Store is an open set of documents.
+type Store struct {
 	// Path is mcli.toml, StatePath state.toml, RefreshPath refresh.toml,
 	// SessionPath session.toml, LastPath last.toml.
 	Path        string
@@ -197,19 +172,16 @@ type DB struct {
 	// can warn about typos instead of ignoring them silently.
 	UnknownKeys []string
 
-	last          *LastLaunch
-	lastLoaded    bool
-	migrated      string
-	migratedSplit bool
-	keys          map[string][]byte
+	last       *LastLaunch
+	lastLoaded bool
+	keys       map[string][]byte
 }
 
-// Open loads every document of one mcli home, creating the missing ones and
-// migrating what older versions wrote (a legacy JSON mcli.db, and state.toml
-// files whose accounts still carried their tokens).
-func Open(f Files) (*DB, error) {
+// Open loads every document of one mcli home, creating the missing ones. There is
+// exactly one shape on disk; nothing older is read.
+func Open(f Files) (*Store, error) {
 	configPath, statePath, lastPath := f.Config, f.State, f.Last
-	db := &DB{
+	s := &Store{
 		Path:        configPath,
 		StatePath:   statePath,
 		RefreshPath: f.Refresh,
@@ -232,18 +204,14 @@ func Open(f Files) (*DB, error) {
 		file := configFile{Config: config.Default()}
 		unknown, err := toml.UnmarshalWithReport(cfgRaw, &file)
 		if err != nil {
-			return nil, fmt.Errorf("%s", i18n.T("err.db.parse", configPath, err))
+			return nil, fmt.Errorf("%s", i18n.T("err.state.parse", configPath, err))
 		}
-		db.UnknownKeys = append(db.UnknownKeys, labelLeft(configPath, unknown)...)
-		db.Data.Config = file.Config
+		s.UnknownKeys = append(s.UnknownKeys, labelLeft(configPath, unknown)...)
+		s.Data.Config = file.Config
 	case os.IsNotExist(err):
-		if legacy, legacyErr := os.ReadFile(legacyPathFor(statePath)); legacyErr == nil {
-			if err := db.importLegacy(legacy, statePath); err != nil {
-				return nil, err
-			}
-		}
+		// a fresh home: the defaults are already in place
 	default:
-		return nil, fmt.Errorf("%s", i18n.T("err.db.read", statePath, err))
+		return nil, fmt.Errorf("%s", i18n.T("err.state.read", configPath, err))
 	}
 
 	// --- state -----------------------------------------------------------
@@ -253,40 +221,29 @@ func Open(f Files) (*DB, error) {
 		file := stateFile{}
 		unknown, err := toml.UnmarshalWithReport(stateRaw, &file)
 		if err != nil {
-			return nil, fmt.Errorf("%s", i18n.T("err.db.parse", statePath, err))
+			return nil, fmt.Errorf("%s", i18n.T("err.state.parse", statePath, err))
 		}
-		if carriesInlineTokens(stateRaw) {
-			// Pre-split state.toml: the accounts still hold their encrypted
-			// tokens. Re-read them in the old shape and move the credentials
-			// into refresh.toml / session.toml.
-			old := stateFileV2{}
-			if _, err := toml.UnmarshalWithReport(stateRaw, &old); err != nil {
-				return nil, fmt.Errorf("%s", i18n.T("err.db.parse", statePath, err))
-			}
-			db.splitLegacyAccounts(old)
-		} else {
-			db.UnknownKeys = append(db.UnknownKeys, labelLeft(statePath, unknown)...)
-		}
-		db.Data.DBVersion = file.DBVersion
+		s.UnknownKeys = append(s.UnknownKeys, labelLeft(statePath, unknown)...)
+		s.Data.StateVersion = file.StateVersion
 		if file.Accounts != nil {
-			db.Data.Accounts = file.Accounts
+			s.Data.Accounts = file.Accounts
 		}
 		if file.Instances != nil {
-			db.Data.Instances = file.Instances
+			s.Data.Instances = file.Instances
 		}
-		db.Data.Manifest = file.Manifest
+		s.Data.Manifest = file.Manifest
 	case os.IsNotExist(err):
-		// fresh home
+		// a fresh home
 	default:
-		return nil, fmt.Errorf("%s", i18n.T("err.db.read", statePath, err))
+		return nil, fmt.Errorf("%s", i18n.T("err.state.read", statePath, err))
 	}
 
 	// --- credentials -----------------------------------------------------
-	if err := db.loadTokens(); err != nil {
+	if err := s.loadTokens(); err != nil {
 		return nil, err
 	}
 
-	d := db.Data
+	d := s.Data
 	d.Config.FillMissing()
 	if d.Instances == nil {
 		d.Instances = map[string]*Instance{}
@@ -300,201 +257,48 @@ func Open(f Files) (*DB, error) {
 	if d.Session == nil {
 		d.Session = map[string]*SessionRecord{}
 	}
-	// Older shapes that needed no migration (a v2 file that stored no tokens)
-	// are simply brought up to date. A file written by a *newer* mcli keeps its
-	// number, so the CLI can warn instead of garbling it.
-	if d.DBVersion < DBVersion {
-		d.DBVersion = DBVersion
+	// A file this build does not know the shape of keeps its number, so the CLI
+	// can warn about it instead of garbling it. Anything else is this build's.
+	if d.StateVersion == 0 {
+		d.StateVersion = StateVersion
 	}
-	// A migrated home always ends up at the current shape, whatever version the
-	// file it came from claimed.
-	if db.migrated != "" || db.migratedSplit {
-		d.DBVersion = DBVersion
-	}
-	// A legacy database's salt is handed to each imported account by
-	// importLegacy, so their tokens stay decryptable after the migration.
-	if db.migrated != "" || db.migratedSplit {
-		// write the documents straight away so the old shape can be retired
-		if err := db.SaveAll(); err != nil {
-			return nil, err
-		}
-		if lt := db.last; lt != nil {
-			if err := db.SaveLast(lt); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return db, nil
+	return s, nil
 }
 
 // loadTokens reads refresh.toml and session.toml. Missing files are the normal
 // case before the first login.
-func (db *DB) loadTokens() error {
-	if db.RefreshPath != "" {
-		if raw, err := os.ReadFile(db.RefreshPath); err == nil {
+func (s *Store) loadTokens() error {
+	if s.RefreshPath != "" {
+		if raw, err := os.ReadFile(s.RefreshPath); err == nil {
 			file := refreshFile{}
 			unknown, err := toml.UnmarshalWithReport(raw, &file)
 			if err != nil {
-				return fmt.Errorf("%s", i18n.T("err.db.parse", db.RefreshPath, err))
+				return fmt.Errorf("%s", i18n.T("err.state.parse", s.RefreshPath, err))
 			}
-			db.UnknownKeys = append(db.UnknownKeys, labelLeft(db.RefreshPath, unknown)...)
+			s.UnknownKeys = append(s.UnknownKeys, labelLeft(s.RefreshPath, unknown)...)
 			if file.Tokens != nil {
-				db.Data.Refresh = file.Tokens
+				s.Data.Refresh = file.Tokens
 			}
 		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("%s", i18n.T("err.db.read", db.RefreshPath, err))
+			return fmt.Errorf("%s", i18n.T("err.state.read", s.RefreshPath, err))
 		}
 	}
-	if db.SessionPath != "" {
-		if raw, err := os.ReadFile(db.SessionPath); err == nil {
+	if s.SessionPath != "" {
+		if raw, err := os.ReadFile(s.SessionPath); err == nil {
 			file := sessionFile{}
 			unknown, err := toml.UnmarshalWithReport(raw, &file)
 			if err != nil {
-				return fmt.Errorf("%s", i18n.T("err.db.parse", db.SessionPath, err))
+				return fmt.Errorf("%s", i18n.T("err.state.parse", s.SessionPath, err))
 			}
-			db.UnknownKeys = append(db.UnknownKeys, labelLeft(db.SessionPath, unknown)...)
+			s.UnknownKeys = append(s.UnknownKeys, labelLeft(s.SessionPath, unknown)...)
 			if file.Sessions != nil {
-				db.Data.Session = file.Sessions
+				s.Data.Session = file.Sessions
 			}
 		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("%s", i18n.T("err.db.read", db.SessionPath, err))
+			return fmt.Errorf("%s", i18n.T("err.state.read", s.SessionPath, err))
 		}
 	}
 	return nil
-}
-
-// carriesInlineTokens reports whether a state.toml body still stores credentials
-// inside its account tables.
-func carriesInlineTokens(raw []byte) bool {
-	body := string(raw)
-	return strings.Contains(body, "refresh_token_enc") || strings.Contains(body, "mc_token_enc")
-}
-
-// splitLegacyAccounts moves the credentials of a pre-split state.toml into the
-// two credential documents, keeping the identity (and therefore the logins) as
-// they were.
-func (db *DB) splitLegacyAccounts(old stateFileV2) {
-	for uuid, acc := range old.Accounts {
-		if acc == nil {
-			continue
-		}
-		db.Data.Accounts[uuid] = &Account{
-			Name:      acc.Name,
-			UUID:      acc.UUID,
-			XUID:      acc.XUID,
-			Label:     acc.Label,
-			Active:    acc.Active,
-			AddedAt:   acc.AddedAt,
-			LastLogin: acc.LastLogin,
-		}
-		if acc.RefreshEnc != "" || acc.TokenSalt != "" {
-			db.Data.Refresh[uuid] = &TokenRecord{Salt: acc.TokenSalt, RefreshEnc: acc.RefreshEnc}
-		}
-		if acc.MCTokenEnc != "" {
-			db.Data.Session[uuid] = &SessionRecord{MCTokenEnc: acc.MCTokenEnc, MCTokenExp: acc.MCTokenExp}
-		}
-	}
-	if len(old.Instances) > 0 {
-		db.Data.Instances = old.Instances
-	}
-	if old.Manifest != nil {
-		db.Data.Manifest = old.Manifest
-	}
-	if old.DBVersion != 0 {
-		db.Data.DBVersion = old.DBVersion
-	}
-	db.migratedSplit = true
-}
-
-// legacyDoc mirrors the pre-TOML JSON layout. It is decoded with the TOML
-// decoder (DecodeMap) so no second set of struct tags is needed.
-type legacyDoc struct {
-	DBVersion int                       `toml:"db_version"`
-	Salt      string                    `toml:"salt"`
-	Config    config.Config             `toml:"config"`
-	Accounts  map[string]*legacyAccount `toml:"accounts"`
-	Instances map[string]*Instance      `toml:"instances"`
-	Last      *LastLaunch               `toml:"last_launch"`
-}
-
-// importLegacy reads a pre-TOML JSON mcli.db into the new documents: the config
-// goes to mcli.toml, everything else to state.toml (and last.toml), and the
-// cached manifest body moves into cache/ as raw JSON.
-func (db *DB) importLegacy(raw []byte, statePath string) error {
-	generic := map[string]interface{}{}
-	if err := json.Unmarshal(raw, &generic); err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.parse", legacyPathFor(statePath), err))
-	}
-	old := &legacyDoc{}
-	if _, err := toml.DecodeMap(generic, old); err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.parse", legacyPathFor(statePath), err))
-	}
-	if old.DBVersion != 0 {
-		db.Data.DBVersion = old.DBVersion
-	}
-	db.Data.Config = old.Config
-	if old.Accounts != nil {
-		for uuid, acc := range old.Accounts {
-			if acc == nil {
-				continue
-			}
-			salt := acc.TokenSalt
-			if salt == "" {
-				salt = old.Salt // the pre-TOML format kept one salt for everyone
-			}
-			db.Data.Accounts[uuid] = &Account{
-				Name:      acc.Name,
-				UUID:      acc.UUID,
-				XUID:      acc.XUID,
-				Label:     acc.Label,
-				Active:    acc.Active,
-				AddedAt:   acc.AddedAt,
-				LastLogin: acc.LastLogin,
-			}
-			if acc.RefreshEnc != "" || salt != "" {
-				db.Data.Refresh[uuid] = &TokenRecord{Salt: salt, RefreshEnc: acc.RefreshEnc}
-			}
-			if acc.MCTokenEnc != "" {
-				db.Data.Session[uuid] = &SessionRecord{MCTokenEnc: acc.MCTokenEnc, MCTokenExp: acc.MCTokenExp}
-			}
-		}
-	}
-	if old.Instances != nil {
-		db.Data.Instances = old.Instances
-	}
-	if old.Last != nil {
-		db.last = old.Last
-		db.lastLoaded = true
-	}
-	if mc, ok := generic["manifest_cache"].(map[string]interface{}); ok {
-		cache := &ManifestCache{File: manifestPathFor(statePath)}
-		if s, ok := mc["source"].(string); ok {
-			cache.Source = s
-		}
-		if ts, ok := mc["fetched_at"].(string); ok {
-			if parsed, err := time.Parse(time.RFC3339, ts); err == nil {
-				cache.FetchedAt = parsed
-			}
-		}
-		if body := mc["raw"]; body != nil {
-			if blob, err := json.Marshal(body); err == nil {
-				if err := os.MkdirAll(filepath.Dir(cache.File), 0o755); err == nil {
-					_ = os.WriteFile(cache.File, blob, 0o644)
-				}
-			}
-		}
-		db.Data.Manifest = cache
-	}
-	db.migrated = legacyPathFor(statePath)
-	return nil
-}
-
-func legacyPathFor(statePath string) string {
-	return filepath.Join(filepath.Dir(statePath), "mcli.db")
-}
-
-func manifestPathFor(statePath string) string {
-	return filepath.Join(filepath.Dir(statePath), "cache", "version_manifest_v2.json")
 }
 
 func labelLeft(path string, keys []string) []string {
@@ -515,51 +319,51 @@ func labelLeft(path string, keys []string) []string {
 
 // Tokens returns an account's credential records, creating empty ones when the
 // account has never stored a token.
-func (db *DB) Tokens(uuid string) (*TokenRecord, *SessionRecord) {
-	if db.Data.Refresh == nil {
-		db.Data.Refresh = map[string]*TokenRecord{}
+func (s *Store) Tokens(uuid string) (*TokenRecord, *SessionRecord) {
+	if s.Data.Refresh == nil {
+		s.Data.Refresh = map[string]*TokenRecord{}
 	}
-	if db.Data.Session == nil {
-		db.Data.Session = map[string]*SessionRecord{}
+	if s.Data.Session == nil {
+		s.Data.Session = map[string]*SessionRecord{}
 	}
-	rec, ok := db.Data.Refresh[uuid]
+	rec, ok := s.Data.Refresh[uuid]
 	if !ok || rec == nil {
 		rec = &TokenRecord{}
-		db.Data.Refresh[uuid] = rec
+		s.Data.Refresh[uuid] = rec
 	}
-	sess, ok := db.Data.Session[uuid]
+	sess, ok := s.Data.Session[uuid]
 	if !ok || sess == nil {
 		sess = &SessionRecord{}
-		db.Data.Session[uuid] = sess
+		s.Data.Session[uuid] = sess
 	}
 	return rec, sess
 }
 
 // SetRefreshToken stores one account's long-lived credential material.
-func (db *DB) SetRefreshToken(uuid, salt, enc string) {
-	rec, _ := db.Tokens(uuid)
+func (s *Store) SetRefreshToken(uuid, salt, enc string) {
+	rec, _ := s.Tokens(uuid)
 	rec.Salt = salt
 	rec.RefreshEnc = enc
 }
 
 // SetSessionToken stores one account's short-lived Minecraft token.
-func (db *DB) SetSessionToken(uuid, enc string, exp time.Time) {
-	_, sess := db.Tokens(uuid)
+func (s *Store) SetSessionToken(uuid, enc string, exp time.Time) {
+	_, sess := s.Tokens(uuid)
 	sess.MCTokenEnc = enc
 	sess.MCTokenExp = exp
 }
 
 // DropAccount removes an account and every trace of its credentials.
-func (db *DB) DropAccount(uuid string) {
-	delete(db.Data.Accounts, uuid)
-	delete(db.Data.Refresh, uuid)
-	delete(db.Data.Session, uuid)
-	delete(db.keys, uuid)
+func (s *Store) DropAccount(uuid string) {
+	delete(s.Data.Accounts, uuid)
+	delete(s.Data.Refresh, uuid)
+	delete(s.Data.Session, uuid)
+	delete(s.keys, uuid)
 }
 
 // SetAccountSalt gives an account a fresh salt when it has none (first login).
-func (db *DB) SetAccountSalt(acc *Account) error {
-	rec, _ := db.Tokens(acc.UUID)
+func (s *Store) SetAccountSalt(acc *Account) error {
+	rec, _ := s.Tokens(acc.UUID)
 	if rec.Salt != "" {
 		return nil
 	}
@@ -568,19 +372,19 @@ func (db *DB) SetAccountSalt(acc *Account) error {
 		return err
 	}
 	rec.Salt = base64.StdEncoding.EncodeToString(salt)
-	delete(db.keys, acc.UUID)
+	delete(s.keys, acc.UUID)
 	return nil
 }
 
 // AccountKey derives (and caches) the AES key protecting one account's tokens.
-func (db *DB) AccountKey(acc *Account) ([]byte, error) {
+func (s *Store) AccountKey(acc *Account) ([]byte, error) {
 	if acc == nil {
 		return nil, fmt.Errorf("%s", i18n.T("err.secret.nosalt"))
 	}
-	if k, ok := db.keys[acc.UUID]; ok {
+	if k, ok := s.keys[acc.UUID]; ok {
 		return k, nil
 	}
-	rec := db.Data.Refresh[acc.UUID]
+	rec := s.Data.Refresh[acc.UUID]
 	if rec == nil {
 		return nil, fmt.Errorf("%s", i18n.T("err.secret.nosalt"))
 	}
@@ -592,48 +396,45 @@ func (db *DB) AccountKey(acc *Account) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.keys[acc.UUID] = k
+	s.keys[acc.UUID] = k
 	return k, nil
 }
 
-// MigratedFrom is the legacy file that was imported, if any.
-func (db *DB) MigratedFrom() string { return db.migrated }
-
 // Save writes state.toml atomically with 0600 permissions. Credentials are not
 // part of it: use SaveRefresh / SaveSession for those.
-func (db *DB) Save() error {
-	if err := db.Data.Config.Validate(); err != nil {
+func (s *Store) Save() error {
+	if err := s.Data.Config.Validate(); err != nil {
 		return err
 	}
 	state := stateFile{
-		DBVersion: DBVersion,
-		Accounts:  db.Data.Accounts,
-		Instances: db.Data.Instances,
-		Manifest:  db.Data.Manifest,
+		StateVersion: StateVersion,
+		Accounts:     s.Data.Accounts,
+		Instances:    s.Data.Instances,
+		Manifest:     s.Data.Manifest,
 	}
 	blob, err := toml.Marshal(state)
 	if err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.marshal", err))
+		return fmt.Errorf("%s", i18n.T("err.state.marshal", err))
 	}
 	// The credential documents are created lazily by their own savers, but a
 	// state write should not leave the home looking half-built.
-	if _, err := os.Stat(db.RefreshPath); os.IsNotExist(err) && db.RefreshPath != "" {
-		if err := db.SaveRefresh(); err != nil {
+	if _, err := os.Stat(s.RefreshPath); os.IsNotExist(err) && s.RefreshPath != "" {
+		if err := s.SaveRefresh(); err != nil {
 			return err
 		}
 	}
-	return writeFileAtomic(db.StatePath, append([]byte(stateHeader()), blob...))
+	return writeFileAtomic(s.StatePath, append([]byte(stateHeader()), blob...))
 }
 
 // SaveRefresh writes refresh.toml (0600): the long-lived credentials.
-func (db *DB) SaveRefresh() error {
-	if db.RefreshPath == "" {
+func (s *Store) SaveRefresh() error {
+	if s.RefreshPath == "" {
 		return nil
 	}
 	// Accounts that never stored a token are simply absent from the file: an
 	// empty entry would only be noise a reader has to explain.
 	tokens := map[string]*TokenRecord{}
-	for uuid, rec := range db.Data.Refresh {
+	for uuid, rec := range s.Data.Refresh {
 		if rec == nil || (rec.RefreshEnc == "" && rec.Salt == "") {
 			continue
 		}
@@ -641,19 +442,19 @@ func (db *DB) SaveRefresh() error {
 	}
 	blob, err := toml.Marshal(refreshFile{Tokens: tokens})
 	if err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.marshal", err))
+		return fmt.Errorf("%s", i18n.T("err.state.marshal", err))
 	}
-	return writeFileAtomic(db.RefreshPath, append([]byte(refreshHeader()), bytes.TrimLeft(blob, "\n")...))
+	return writeFileAtomic(s.RefreshPath, append([]byte(refreshHeader()), bytes.TrimLeft(blob, "\n")...))
 }
 
 // SaveSession writes session.toml (0600): the short-lived credentials. This is
 // the file that gets rewritten whenever a token is refreshed.
-func (db *DB) SaveSession() error {
-	if db.SessionPath == "" {
+func (s *Store) SaveSession() error {
+	if s.SessionPath == "" {
 		return nil
 	}
 	sessions := map[string]*SessionRecord{}
-	for uuid, rec := range db.Data.Session {
+	for uuid, rec := range s.Data.Session {
 		if rec == nil || rec.MCTokenEnc == "" {
 			continue
 		}
@@ -661,100 +462,100 @@ func (db *DB) SaveSession() error {
 	}
 	blob, err := toml.Marshal(sessionFile{Sessions: sessions})
 	if err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.marshal", err))
+		return fmt.Errorf("%s", i18n.T("err.state.marshal", err))
 	}
-	return writeFileAtomic(db.SessionPath, append([]byte(sessionHeader()), bytes.TrimLeft(blob, "\n")...))
+	return writeFileAtomic(s.SessionPath, append([]byte(sessionHeader()), bytes.TrimLeft(blob, "\n")...))
 }
 
 // SaveTokens writes both credential documents.
-func (db *DB) SaveTokens() error {
-	if err := db.SaveRefresh(); err != nil {
+func (s *Store) SaveTokens() error {
+	if err := s.SaveRefresh(); err != nil {
 		return err
 	}
-	return db.SaveSession()
+	return s.SaveSession()
 }
 
 // SaveConfig regenerates mcli.toml from scratch (comments included).
-func (db *DB) SaveConfig() error {
-	if err := db.Data.Config.Validate(); err != nil {
+func (s *Store) SaveConfig() error {
+	if err := s.Data.Config.Validate(); err != nil {
 		return err
 	}
-	file := configFile{Config: db.Data.Config}
+	file := configFile{Config: s.Data.Config}
 	blob, err := toml.Marshal(file)
 	if err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.marshal", err))
+		return fmt.Errorf("%s", i18n.T("err.state.marshal", err))
 	}
-	return writeFileAtomic(db.Path, append([]byte(configHeader()), blob...))
+	return writeFileAtomic(s.Path, append([]byte(configHeader()), blob...))
 }
 
 // SaveConfigValue persists exactly one config key by patching the existing file,
 // so the user's comments, ordering and unrelated tables survive. It falls back
 // to a full rewrite only when the key is not present in mcli.toml.
-func (db *DB) SaveConfigValue(key string) error {
-	rawValue, err := db.Data.Config.RawValue(key)
+func (s *Store) SaveConfigValue(key string) error {
+	rawValue, err := s.Data.Config.RawValue(key)
 	if err != nil {
 		return err
 	}
-	if current, readErr := os.ReadFile(db.Path); readErr == nil {
+	if current, readErr := os.ReadFile(s.Path); readErr == nil {
 		patched, ok, err := toml.SetKeyInSection(current, ConfigSection, key, rawValue)
 		if err == nil && ok {
-			return writeFileAtomic(db.Path, patched)
+			return writeFileAtomic(s.Path, patched)
 		}
 	}
-	return db.SaveConfig()
+	return s.SaveConfig()
 }
 
 // SaveAll writes every generated document.
-func (db *DB) SaveAll() error {
-	if err := db.SaveConfig(); err != nil {
+func (s *Store) SaveAll() error {
+	if err := s.SaveConfig(); err != nil {
 		return err
 	}
-	if err := db.Save(); err != nil {
+	if err := s.Save(); err != nil {
 		return err
 	}
-	return db.SaveTokens()
+	return s.SaveTokens()
 }
 
 // ---------------------------------------------------------------------------
 // last launch (its own tiny document)
 
 // Last returns the previous launch, reading last.toml on first use.
-func (db *DB) Last() (*LastLaunch, error) {
-	if db.lastLoaded {
-		return db.last, nil
+func (s *Store) Last() (*LastLaunch, error) {
+	if s.lastLoaded {
+		return s.last, nil
 	}
-	db.lastLoaded = true
-	raw, err := os.ReadFile(db.LastPath)
+	s.lastLoaded = true
+	raw, err := os.ReadFile(s.LastPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("%s", i18n.T("err.db.read", db.LastPath, err))
+		return nil, fmt.Errorf("%s", i18n.T("err.state.read", s.LastPath, err))
 	}
 	lt := &LastLaunch{}
 	if _, err := toml.UnmarshalWithReport(raw, lt); err != nil {
-		return nil, fmt.Errorf("%s", i18n.T("err.db.parse", db.LastPath, err))
+		return nil, fmt.Errorf("%s", i18n.T("err.state.parse", s.LastPath, err))
 	}
 	if lt.At.IsZero() && lt.Instance == "" && lt.Version == "" {
 		return nil, nil
 	}
-	db.last = lt
+	s.last = lt
 	return lt, nil
 }
 
 // SaveLast writes only last.toml — no configuration or state is touched.
-func (db *DB) SaveLast(lt *LastLaunch) error {
+func (s *Store) SaveLast(lt *LastLaunch) error {
 	blob, err := toml.Marshal(lt)
 	if err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.marshal", err))
+		return fmt.Errorf("%s", i18n.T("err.state.marshal", err))
 	}
 	header := "# the previous `mcli launch`, replayed by `mcli launch --last`.\n" +
 		"# Small on purpose: replaying flags must not read mcli.toml or state.toml.\n\n"
-	if err := writeFileAtomic(db.LastPath, append([]byte(header), blob...)); err != nil {
+	if err := writeFileAtomic(s.LastPath, append([]byte(header), blob...)); err != nil {
 		return err
 	}
-	db.last = lt
-	db.lastLoaded = true
+	s.last = lt
+	s.lastLoaded = true
 	return nil
 }
 
@@ -767,10 +568,10 @@ func writeFileAtomic(path string, blob []byte) error {
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, blob, 0o600); err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.write", path, err))
+		return fmt.Errorf("%s", i18n.T("err.state.write", path, err))
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("%s", i18n.T("err.db.commit", path, err))
+		return fmt.Errorf("%s", i18n.T("err.state.commit", path, err))
 	}
 	return nil
 }
@@ -803,14 +604,14 @@ func sessionHeader() string {
 }
 
 // Cfg exposes the config table.
-func (db *DB) Cfg() *config.Config { return &db.Data.Config }
+func (s *Store) Cfg() *config.Config { return &s.Data.Config }
 
 // ---------------------------------------------------------------------------
 // accounts
 
 // ActiveAccount returns the currently selected account, if any.
-func (db *DB) ActiveAccount() *Account {
-	for _, a := range db.Data.Accounts {
+func (s *Store) ActiveAccount() *Account {
+	for _, a := range s.Data.Accounts {
 		if a.Active {
 			return a
 		}
@@ -819,30 +620,30 @@ func (db *DB) ActiveAccount() *Account {
 }
 
 // SetActive makes one account the active one and clears the flag elsewhere.
-func (db *DB) SetActive(uuid string) {
-	for k, a := range db.Data.Accounts {
+func (s *Store) SetActive(uuid string) {
+	for k, a := range s.Data.Accounts {
 		a.Active = k == uuid
 	}
 }
 
 // AccountNames returns account keys sorted by name.
-func (db *DB) AccountNames() []string { return sortedKeys(db.Data.Accounts) }
+func (s *Store) AccountNames() []string { return sortedKeys(s.Data.Accounts) }
 
 // ---------------------------------------------------------------------------
 // instances
 
 // GetInstance looks up an instance by name.
-func (db *DB) GetInstance(name string) (*Instance, bool) {
-	i, ok := db.Data.Instances[name]
+func (s *Store) GetInstance(name string) (*Instance, bool) {
+	i, ok := s.Data.Instances[name]
 	return i, ok
 }
 
 // InstanceNames returns instance names, most recently played first, then
 // alphabetical.
-func (db *DB) InstanceNames() []string {
-	names := sortedKeys(db.Data.Instances)
+func (s *Store) InstanceNames() []string {
+	names := sortedKeys(s.Data.Instances)
 	sort.SliceStable(names, func(i, j int) bool {
-		a, b := db.Data.Instances[names[i]], db.Data.Instances[names[j]]
+		a, b := s.Data.Instances[names[i]], s.Data.Instances[names[j]]
 		if !a.LastPlayed.Equal(b.LastPlayed) {
 			return a.LastPlayed.After(b.LastPlayed)
 		}

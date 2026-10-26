@@ -6,7 +6,7 @@ and what is left. Update it in the same commit as the work.
 
 ## Now
 
-* version `0.2.0` (`app.go`), on-disk `db_version = 3`.
+* version `0.2.0` (`app.go`), on-disk `state_version = 1`.
 * `gofmt -l .` empty, `go vet ./...` clean, `go test ./...` green,
   `go build -o mcli .` green.
 * Commands implemented: `version help list create delete launch refresh config
@@ -44,11 +44,6 @@ and what is left. Update it in the same commit as the work.
   passes this one through as it is.
 * `launch --version <other>` points the client jar and natives at the *version's*
   directory, not the instance's (previously wrong).
-* The credential split: an old hand-written `state.toml` (v2, tokens inline) is
-  migrated on open — `state.toml` comes out secret-free, `refresh.toml` gets the
-  salts and refresh tokens, `session.toml` the Minecraft token and expiry,
-  `mcli account list` renders throughout, `logout <name>` removes the account
-  from all three documents.
 * Runtime install: `jre-legacy` (8) and `java-runtime-delta` (21) are on disk and
   `bin/java -version` runs for both. `java install 25` (java-runtime-epsilon,
   ~700 files) is slow through the mirror; see "Environment quirks".
@@ -75,6 +70,14 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* The no-compatibility decision is in force: the pre-TOML JSON database import,
+  the v2 `state.toml` with inline tokens, `paths.LegacyDB` and every migration
+  test are gone, and the store is no longer called a database anywhere
+  (`store.Store`, `store.StateVersion`, on-disk `state_version`).
+* A second, newer version was fetched end to end on the maintainer's request:
+  `create modern --version latest` (26.3, the manifest's current release) then
+  `repair modern --yes` through BMCLAPI — 5216/5216 files, 5147 asset objects,
+  natives extracted, `doctor` clean. The Fabric fixture next to it stayed intact.
 * `auto_memory_percent` really sizes the heap now: on this 7.5 GiB box, 25 →
   `-Xmx1043M`, 50 → `-Xmx2085M`, 75 → `-Xmx3142M`, clamped to half of physical
   memory and never above what is free.

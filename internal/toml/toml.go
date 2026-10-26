@@ -3,7 +3,7 @@
 //
 // Supported (and tested):
 //
-//	root key/value pairs            db_version = 2
+//	root key/value pairs            state_version = 1
 //	[table] and [table.sub]         [config], [accounts."uuid.with.dots"]
 //	basic strings with escapes      "a\"b\nc", \uXXXX
 //	literal strings                 'C:\Users\kailo'

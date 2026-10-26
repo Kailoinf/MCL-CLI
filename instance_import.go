@@ -71,8 +71,8 @@ func (a *App) scanDisk() ([]diskVersion, error) {
 
 // instanceOfVersion returns the instance currently bound to a version id.
 func (a *App) instanceOfVersion(id string) (*store.Instance, bool) {
-	for _, name := range a.DB.InstanceNames() {
-		inst := a.DB.Data.Instances[name]
+	for _, name := range a.Store.InstanceNames() {
+		inst := a.Store.Data.Instances[name]
 		if inst.Version == id || inst.Name == id {
 			return inst, true
 		}
@@ -189,7 +189,7 @@ func (a *App) instanceImport(args []string) int {
 	if err := validateInstanceName(name); err != nil {
 		return a.fatal(err)
 	}
-	if existing, ok := a.DB.GetInstance(name); ok && !f.boolean("force") {
+	if existing, ok := a.Store.GetInstance(name); ok && !f.boolean("force") {
 		if existing.Version == version {
 			a.Log.Printf("%s", i18n.T("inst.import_already", name, version))
 			return 0
@@ -213,12 +213,12 @@ func (a *App) instanceImport(args []string) int {
 		}
 	}
 
-	a.DB.Data.Instances[name] = &store.Instance{
+	a.Store.Data.Instances[name] = &store.Instance{
 		Name:      name,
 		Version:   version,
 		CreatedAt: time.Now(),
 	}
-	if err := a.DB.Save(); err != nil {
+	if err := a.Store.Save(); err != nil {
 		return a.fatal(err)
 	}
 	source := i18n.T("inst.import_source_remote")

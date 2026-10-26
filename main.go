@@ -152,8 +152,8 @@ func (a *App) usageError(format string, args ...interface{}) int {
 func (a *App) cmdVersion() int {
 	a.Log.Printf("mcli %s", Version)
 	a.Log.Printf("%s", i18n.T("cli.mcl_home", a.Paths.Home))
-	a.Log.Printf("%s", i18n.T("cli.config_path", a.DB.Path))
-	a.Log.Printf("%s", i18n.T("cli.state_path", a.DB.StatePath))
+	a.Log.Printf("%s", i18n.T("cli.config_path", a.Store.Path))
+	a.Log.Printf("%s", i18n.T("cli.state_path", a.Store.StatePath))
 	a.Log.Printf("%s", i18n.T("cli.minecraft_dir", a.MinecraftDir()))
 	a.Log.Printf("%s", i18n.T("auth.summary", a.accountSummary()))
 	return 0

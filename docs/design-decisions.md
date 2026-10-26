@@ -31,10 +31,11 @@ The documents are split on ownership and lifecycle:
   parse a configuration to replay flags, so those ~15 values get their own tiny
   file.
 
-Migration is one-way and quiet: a legacy JSON `mcli.db` (db_version 1) is
-imported, a v2 `state.toml` has its inline tokens moved into the two credential
-files, and the moved keys disappear from `state.toml`. `db_version` records the
-shape so a newer mcli's file is reported instead of misread.
+There is no migration code and none is wanted: mcli has no users on an older
+shape, so exactly one shape exists and a version written by an older build is
+simply replaced by the next save. `state_version` (1 today) exists only so that
+a file written by a *newer* mcli is reported instead of misread — forward
+protection, not backward compatibility.
 
 Cost: five files instead of one, and a `--config <path>` override only moves the
 config (the rest derive from its directory). Both are documented in the README.
@@ -48,9 +49,9 @@ installed game, the config and the instance list work on another computer, only
 the login has to happen again. A machine-wide salt would have made the whole
 state file non-transferable for no extra benefit.
 
-Legacy JSON `mcli.db` files (db_version 1) are imported once: the machine-wide
-salt is copied onto each imported account so existing tokens keep decrypting,
-and the old file is left untouched for the user to delete.
+There is no legacy import: the pre-TOML JSON database and the version of
+`state.toml` that stored tokens inline are gone from the code, along with the
+tests that covered them.
 
 ## Instance game directories live under `versions/<instance>/`
 
@@ -154,8 +155,8 @@ between instances and launchers.
 The spec asks for tokens encrypted with a key derived from local device info,
 without depending on the system keychain. PBKDF2-SHA256 (200k iterations) over
 `machine-id` + product UUID + hostname + user, salted with random bytes stored
-in `mcli.db`. Consequences are documented in the README and shown in errors:
-a `mcli.db` copied to another machine cannot be decrypted, and stealing the file
+in `refresh.toml`. Consequences are documented in the README and shown in errors:
+a `refresh.toml` copied to another machine cannot be decrypted, and stealing the file
 alone does not yield the refresh token.
 
 ## i18n keyed by dotted ids, English as the source of truth
@@ -164,7 +165,7 @@ Translations are keyed (`dl.sha_mismatch`), never by English text, so wording ca
 change freely. Two tests enforce the contract: every key used anywhere in the
 repository must exist (`TestSourceKeysExist`), and the two catalogs must have
 identical keys and identical printf verbs (`TestCatalogsInSync`,
-`TestFormatVerbsMatch`). Language resolution: `--lang` → `mcli.db:language` →
+`TestFormatVerbsMatch`). Language resolution: `--lang` → `mcli.toml:language` →
 `MCLI_LANG` → `LC_ALL`/`LC_MESSAGES`/`LANG` → English.
 
 ## Flags only, no interactive wizard
