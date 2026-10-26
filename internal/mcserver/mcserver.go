@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Kailoinf/MCL-CLI/internal/dl"
 	"github.com/Kailoinf/MCL-CLI/internal/java"
@@ -137,6 +138,8 @@ type Command struct {
 	Args []string
 	Dir  string
 	Jar  string
+	// ConsoleViaPipe routes the server's input through the console FIFO.
+	ConsoleViaPipe bool
 }
 
 // Prep assembles the java command line: memory flags, the caller's extra JVM
@@ -190,18 +193,36 @@ func EulaAccepted(dir string) bool {
 // Run starts the server. When wait is false the child keeps running and its pid
 // is returned. A server's console is its stdin and stdout, so both are inherited
 // — the log file the server writes itself stays the durable record.
-func (c *Command) Run(wait bool) (pid int, exitCode int, err error) {
+//
+// onStart, when given, is called with the pid as soon as the child exists. An
+// attached run waits here for as long as the server lives, so a caller that wants
+// to record the pid — the one handle `server stop` has on it — must be told
+// before the wait begins, not after it ends.
+func (c *Command) Run(wait bool, onStart func(pid int)) (pid int, exitCode int, err error) {
 	if err := os.MkdirAll(c.Dir, 0o755); err != nil {
 		return 0, 0, err
 	}
 	cmd := exec.Command(c.Java, c.Args...)
 	cmd.Dir = c.Dir
-	if wait {
+	switch {
+	case wait && c.ConsoleViaPipe:
+		// The launcher owns the console: input comes through the FIFO (so mcli can
+		// also write the server's own `stop` into it), and output still goes to the
+		// person's terminal.
+		input, err := OpenConsoleInput(c.Dir)
+		if err != nil {
+			return 0, 0, err
+		}
+		defer input.Close()
+		cmd.Stdin = input
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	case wait:
 		// An attached run is the console: the person starting it types into it.
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-	} else {
+	default:
 		// A detached server must not inherit mcli's stdout: an open pipe would
 		// keep whoever launched mcli waiting for a process that never ends. It
 		// gets its own console file instead, and no stdin.
@@ -230,9 +251,11 @@ func (c *Command) Run(wait bool) (pid int, exitCode int, err error) {
 	if err := cmd.Start(); err != nil {
 		return 0, 0, err
 	}
+	pid = cmd.Process.Pid
+	if onStart != nil {
+		onStart(pid)
+	}
 	if !wait {
-		// read the pid before releasing: Release invalidates Process.Pid
-		pid := cmd.Process.Pid
 		// release the child so mcli can exit without killing it
 		_ = cmd.Process.Release()
 		return pid, 0, nil
@@ -255,4 +278,31 @@ func (c *Command) consoleFile() (*os.File, error) {
 		return nil, err
 	}
 	return os.OpenFile(filepath.Join(dir, "console.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+}
+
+// ReadyLine is what a Minecraft server prints once it accepts commands. It is the
+// signal a launcher has to wait for before forwarding anything: a command that
+// arrives earlier is answered with "An unexpected error occurred while trying to
+// execute that command", because the dispatcher is not up yet.
+const ReadyLine = "Done ("
+
+// WaitReady waits for the server in dir to report that it is ready, and reports
+// whether it saw the line. `since` is when the wait started: the log has to have been
+// written after that, because until the new server rotates `latest.log` it still
+// holds the previous run's output — and its `Done (` from last time is not readiness
+// now. A server that cannot start will never answer, so callers bound this with their
+// own timeout.
+func WaitReady(dir string, since time.Time, timeout time.Duration) bool {
+	path := filepath.Join(dir, "logs", "latest.log")
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		info, statErr := os.Stat(path)
+		if statErr == nil && !info.ModTime().Before(since) {
+			if raw, err := os.ReadFile(path); err == nil && strings.Contains(string(raw), ReadyLine) {
+				return true
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return false
 }

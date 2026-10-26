@@ -79,6 +79,36 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* 控制台闸门必须知道自己在等**哪一次运行**：`latest.log` 在新服务器轮转日志之前，仍然是上一次
+  服务器的输出，于是「日志里有没有 `Done (`」这种检查会立刻答是，管道里的命令照样被过早送出 ——
+  同样的两条报错，来自一个看上去没问题的闸门。现在要求日志的写入时间在这次启动之后
+  （`WaitReady(dir, since, timeout)`），并有测试钉住「过期的 Done 不算就绪」。
+* 为残留的控制台命令写过一版 drain，实测之后删掉了：FIFO 缓冲区里的字节在最后一个句柄关闭时就
+  被丢弃，所以停掉的服务器管道里留下的东西不会传给下一个服务器。没有什么可清空的，代码也就不留
+  —— `internal/mcserver` 里没有 `DrainConsole`。
+* 在服务器的命令分发器就绪之前送进去的命令，会被回答成
+  `An unexpected error occurred while trying to execute that command` —— 出现了两次，
+  都是用脚本往刚启动的服务器里喂 `list` 与 `stop` 时。现在控制台输入泵会先等服务器自己打印的就绪行
+  （`Done (`），在此之前不转发任何东西：这段时间里人敲的内容留在终端缓冲里，管道里的内容留在管道里。
+  脚本化控制台（`printf 'list\nstop\n' | mcli server start <名称>`）是需要保持可用的场景。
+* 控制台管道不能在「另一端还有人拿着」之前打开：以只写方式打开 FIFO 会等待读者，于是
+  `mcli server start` 在服务器还没起来时就卡住了。这是靠观察真实运行、而不是靠猜找到的 ——
+  mcli 当时正睡在 `fifo_open` 里。现在控制台写入端以读写方式打开（Linux 上立即返回），
+  前台输入泵改从子进程的 pid 回调里启动，也就是服务器已经握住管道之后。
+  `internal/mcserver/console_unix_test.go` 把两条性质都钉住了：没有读者时打开写入端不阻塞、
+  管道只创建一次。
+* **对无头服务器来说，信号并不是优雅停止 —— 而 mcli 之前是这么声称的。** `server stop` 一边打印
+  「它会先保存存档再退出」，一边发 SIGINT。在本机对着真实的 26.3 服务器实测：SIGINT 与 SIGTERM
+  都会让进程直接结束 —— 它自己的日志里既没有 `Stopping server` 也没有 `Saving worlds`，也就是
+  存档只保留到最后一次自动保存。真正管用的是服务器自己的控制台命令 `stop`（实测：写入之后日志里
+  出现 `Stopping server` 与 `Saving worlds`，监听关闭、pid 清空、端口释放）。现在 `server stop`
+  就是把这条命令写进控制台 FIFO；`--force` 会直接结束，并说明它做的是强制结束。
+* 前台服务器的 pid 之前只在它**退出之后**才记录，于是 `timeout 100 mcli server start` 会留下一个
+  占着端口、而状态里毫无痕迹的服务器 —— `server list` 看不到，`server stop` 也够不着。这个问题正是
+  这么被发现的。现在 pid 在进程一出现时就记录（两种模式都一样），进程消失时清空。
+* 前台运行现在和后台一样接管控制台（输入走 FIFO、输出到终端、服务器在自己的进程组里），于是
+  Ctrl+C、`timeout` 的 SIGTERM、以及 `mcli server cmd <名称> stop` 都会通过它自己的命令停止，
+  而不是杀掉一个什么都不会保存的 JVM。
 * 一次平台梳理 —— 维护者是在 Windows 的 Git Bash 里跑 mcli 的，只在开发机上能用的启动器算不上启动器。
   发现并修掉的东西，以及现在靠什么检查：
   * **所有 32 位目标都编译不过** —— 微软返回的 XSTS 错误码（2148916233 等）放不进 32 位 int。

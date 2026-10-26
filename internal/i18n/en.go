@@ -380,6 +380,13 @@ var en = map[string]string{
 	"upd.pack_kept_modified":      "keeping %s: it no longer matches what the pack installed, so it is yours now",
 	"upd.pack_kept_unrecorded":    "keeping %s: the pack did not record it, so it is not mcli's to delete",
 	"upd.pack_kept_unreadable":    "keeping %s: it cannot be read (%v)",
+	"srv.forwarding":              "%s received: asking server %s to save and stop through its own console",
+	"srv.forward_failed":          "could not pass the signal to the server: %v",
+	"srv.stopping_console":        "asking server %s (pid %d) to stop through its own console; it saves the world first",
+	"srv.stopping_signal":         "asking server %s (pid %d) to stop with a signal; a headless server may not get to save — it keeps its last autosave",
+	"srv.stopping_force":          "killing server %s (pid %d); the world keeps its last autosave",
+	"srv.stop_no_console":         "no console channel to %s (%v): falling back to a signal",
+	"srv.console_late":            "the server has not reported readiness yet; forwarding input to %s anyway",
 	// ---------------------------------------------------------------- mod loaders (a choice)
 	"loader.bad":             "unknown loader %q; the choices are %s",
 	"loader.needs_game":      "a mod loader needs a game version to attach to",

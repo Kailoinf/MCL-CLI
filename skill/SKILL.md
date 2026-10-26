@@ -278,6 +278,16 @@ the box, and `1.8.9 → 26.3`):
 The old version keeps its files — another instance may run them — and an instance
 already on the target is only checked for completeness.
 
+Stopping a server the way that actually saves its world (verified against a real
+26.3 server; a signal does *not* do this):
+
+```sh
+./mcli server start <name> --detach --yes
+./mcli server stop <name>                    # writes the console `stop`, waits for the save
+./mcli server stop <name> --force            # kills it, and says so
+grep -E "Stopping server|Saving worlds" <servers dir>/<name>/logs/latest.log
+```
+
 A modpack, verified with a real one (`fabulously-optimized`, 48 files, 41.9 MB,
 fabric-loader 0.19.5 on 26.3):
 
@@ -291,6 +301,33 @@ Verified with `fabulously-optimized` (48 files, 41.9 MB): 45 jars into `mods/`,
 3 zips into `resourcepacks/`, 51 override files, and a re-run that writes nothing.
 Two things to keep in mind, learned the hard way there:
 
+* **Stop a server through the server's own console, never around it.** A headless
+  JVM has no signal handler a launcher may rely on: against a real 26.3 server, both
+  SIGINT and SIGTERM ended the process with no `Stopping server` and no
+  `Saving worlds` in its log, so the world kept only its last autosave. Write the
+  server's own `stop` into its console FIFO (`mcserver.OpenConsoleWriter`) and wait
+  for it to close; keep `--force` for the kill and say which one was used.
+* **Never open the console pipe before the server holds the other end.** A FIFO
+  opened write-only blocks until a reader exists — that is how `mcli server start`
+  hung before starting anything (mcli asleep in `fifo_open`). Open the writer
+  read-write, and start any input pump from the child's pid callback, i.e. after
+  `cmd.Start`. `internal/mcserver/console_unix_test.go` pins the property.
+* **Hold console input until the server is ready.** A command that arrives before
+  the server's dispatcher is up is answered with `An unexpected error occurred while
+  trying to execute that command` (seen twice with a scripted `list`/`stop`).
+  `mcserver.WaitReady(dir, since, timeout)` looks for the server's own `Done (` line
+  — and *since* matters: `latest.log` still holds the previous run's output until the
+  new server rotates it, so a check without a start time passes instantly and the
+  commands go early anyway. Pump stdin only after that. A scripted console must keep
+  working. (A FIFO's buffered bytes are discarded when the last handle closes, so
+  there is nothing to drain from a stopped server's pipe: a `DrainConsole` was
+  written, measured and deleted.)
+* **Record a child's pid the moment it exists, not after waiting for it.** A
+  foreground run waits for as long as the server lives, so a pid recorded afterwards
+  leaves an orphan that `server list` cannot see and `server stop` cannot reach.
+  `mcserver.Command.Run(wait, onStart)` takes the callback for exactly this, and a
+  foreground run should own the console (FIFO stdin, own process group) so that
+  Ctrl+C and SIGTERM reach the server as its own `stop`.
 * **Ask the version JSON what an instance is** (`Version.GameVersion()`, `Version.Loader()`),
   never the instance's name or its id: another launcher writes its own id, puts the
   game version in `clientVersion` instead of `inheritsFrom`, and names the loader

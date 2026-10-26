@@ -75,6 +75,48 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* The console gate has to know *which* run it is waiting on: `latest.log` still holds
+  the previous server's output until the new one rotates it, so asking only "is
+  `Done (` in the log?" answered yes at once and the piped commands went early again
+  — the same two errors, from a gate that looked right. It requires the log to have
+  been written after this start now (`WaitReady(dir, since, timeout)`), and a test
+  pins that a stale line is not readiness.
+* A drain for leftover console commands was written, measured and then deleted: a
+  FIFO's buffered bytes are discarded when the last handle closes, so what a stopped
+  server's pipe held never reaches the next one. There is nothing to drain, so the
+  code is not there — and `internal/mcserver` has no `DrainConsole`.
+* Commands sent to a server before its command dispatcher is up are answered with
+  `An unexpected error occurred while trying to execute that command` — seen twice,
+  with a script feeding `list` and `stop` into a freshly started server. The console
+  pump therefore waits for the server's own readiness line (`Done (`) before
+  forwarding anything: what a person types meanwhile waits in their terminal, and
+  what a pipe holds waits in the pipe. A scripted console — `printf 'list\nstop\n' |
+  mcli server start <name>` — is a case worth keeping working.
+* A console pipe must not be opened before something holds the other end: a FIFO
+  opened write-only waits for a reader, so `mcli server start` hung before it had
+  started anything. Found by looking at a real run rather than guessing — mcli was
+  asleep inside `fifo_open`. The console writer opens read-write (which returns at
+  once on Linux), and the foreground pump now starts from the child's pid callback,
+  after the server holds the pipe. `internal/mcserver/console_unix_test.go` pins
+  both: the writer does not block with no reader, and the pipe is created once.
+* **A signal is not a graceful stop for a headless server, and mcli was claiming it
+  was.** `server stop` printed "it saves the world before exiting" while sending
+  SIGINT. Measured on this box against a real 26.3 server: both SIGINT and SIGTERM
+  end the process outright — its own log shows neither `Stopping server` nor
+  `Saving worlds`, so the world keeps only what the last autosave wrote. The
+  server's own console command `stop` does the real thing (verified: after writing
+  it, the log has `Stopping server` and `Saving worlds`, the listener stops, the pid
+  clears and the port is free). `server stop` writes that command into the console
+  FIFO now; `--force` kills, and says that it killed.
+* A foreground server's pid used to be recorded only *after* it exited, so a
+  `timeout 100 mcli server start` left a server running on its port with nothing in
+  the state pointing at it — invisible to `server list` and unreachable by
+  `server stop`. That is how this was found. The pid is recorded the moment the
+  process exists, in both modes, and cleared when it goes.
+* A foreground run now owns the console the way a detached one does (input through
+  the FIFO, output to the terminal, the server in its own process group), so Ctrl+C,
+  `timeout`'s SIGTERM and `mcli server cmd <name> stop` all stop it through its own
+  command instead of killing a JVM that would save nothing.
 * A platform pass, because the maintainer runs mcli from Git Bash on Windows and a
   launcher that only works where it was written is not much of a launcher. What was
   found and fixed, and what it is now checked by:

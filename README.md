@@ -203,9 +203,11 @@ file and runs it.
 ```sh
 mcli server create survival --version 26.3 --port 25566 --xmx 4G   # prints the EULA URL, asks for Y
 mcli server start survival                                          # fetches ~60 MB once, then runs attached
-mcli server start survival --detach                                 # or in the background, pid recorded
+mcli server start survival --detach                                 # or in the background; the pid is recorded either way
 mcli server attach survival                                         # follow that console, type commands
-mcli server stop survival                                           # only needed for --detach runs
+mcli server stop survival                                           # the server's own `stop`: it saves, then exits
+mcli server stop survival --force                                    # kill it instead, and say so
+printf 'list\nstop\n' | mcli server start survival                   # or script its console
 ```
 
 * The directory is `<minecraft_dir>/servers/<name>` — jar, world, `eula.txt` and
@@ -213,9 +215,18 @@ mcli server stop survival                                           # only neede
   `server.properties` is never rewritten.
 * The EULA is never accepted for you: the URL is printed, the question is asked,
   and `--eula` (or a global `--yes`) only skips the question, not the notice.
-* `--detach` starts the server in the background and records its pid, so
-  `mcli server stop` can signal it later. A detached server writes its console to
-  `<dir>/logs/console.log` and its own log to `<dir>/logs/latest.log`.
+* `--detach` starts the server in the background. A detached server writes its
+  console to `<dir>/logs/console.log` and its own log to `<dir>/logs/latest.log`.
+* **A server is stopped through its own console, not around it.** A headless JVM
+  has no signal handler a launcher may rely on: measured on this box, both SIGINT
+  and SIGTERM end the process with no `Stopping server` and no `Saving worlds` in
+  its log, so the world keeps only what the last autosave wrote. `mcli server stop`
+  therefore writes the server's own `stop` command into its console and waits for
+  it to save and close; `--force` kills it, and says that is what it did.
+* The pid is recorded the moment the server starts — in both modes — so a server
+  left behind by a killed mcli is still visible to `server list` and stoppable.
+  A foreground run gives mcli the console too, so Ctrl+C, `timeout`'s SIGTERM and
+  `mcli server cmd <name> stop` all save the world on the way out.
 * Java comes from the same runtime rules as the client: the version's
   `javaVersion.majorVersion`, and mcli installs the runtime when it is missing.
 * `server attach` needs a FIFO for the server's stdin (Linux, macOS); elsewhere

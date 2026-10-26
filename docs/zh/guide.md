@@ -49,7 +49,7 @@ mcli server start survival              # attached: the console is yours, Ctrl+C
 mcli server start survival --detach     # background, pid recorded
 mcli server attach survival             # follow output and type commands; Ctrl+C only leaves
 mcli server cmd survival say hello      # one command, no session
-mcli server stop survival               # SIGINT, so the world is saved
+mcli server stop survival               # 用服务器自己的 stop，存档会保存
 ```
 
 服务器位于 `<minecraft_dir>/servers/<name>`。`eula.txt` 和 `server.properties` 只创建一次，之后绝不覆盖；Minecraft EULA 的 URL 会被打印出来，必须接受（`--eula` 跳过的是询问，不是这条提示）。
@@ -147,7 +147,7 @@ mcli 是一个零依赖的 Go 二进制，下面这些平台都能编译，也�
 | 自动计算堆大小 | 可以 | 可以 | 可以 | Windows 问 kernel32，macOS 取物理内存一半 |
 | 服务端（前台与后台） | 可以 | 可以 | 可以 | 后台输出写到 `logs/console.log` |
 | `server attach` / `server cmd` | 可以 | **不可以** | 可以 | 需要给服务端输入用的 FIFO |
-| 优雅的 `server stop` | 可以 | **不可以** | 可以 | Windows 上 `--force` 直接结束，自动保存保住了存档 |
+| 通过服务器控制台 `server stop` | 可以 | **不可以** | 可以 | Windows 没有 FIFO：`--force` 直接结束，存档保留在最后一次自动保存 |
 | `doctor` 的可用空间一行 | 可以 | 可以 | 可以 | Windows 问 kernel32 |
 
 缺什么，mcli 就会直说并给出替代做法，而不是抛一个看不懂的底层错误：Windows 上 `server attach`

@@ -575,27 +575,57 @@ func (a *App) serverStart(args []string) int {
 
 	detach := f.boolean("detach")
 	a.Log.Printf("%s", i18n.T("srv.starting", o.Dir))
-	pid, code, err := cmd.Run(!detach)
-	if err != nil {
-		return a.fatal(err)
-	}
-	srv.StartedAt = time.Now()
-	if err := a.Store.Save(); err != nil {
-		a.Log.Warnf("%s", err)
-	}
-	if detach {
-		// The pid is the only handle a later `server stop` has on this process.
+
+	// The pid is the only handle a later `server stop` has on this process, so it
+	// is recorded the moment the process exists — in both modes. A foreground
+	// server used to go unrecorded until it exited, which meant that anything
+	// killing mcli (a `timeout`, a service manager, a closed terminal) left a
+	// server running on a port with nothing in the state pointing at it.
+	startedAt := time.Now()
+	srv.StartedAt = startedAt
+	// The pump can only open the console pipe once the server is holding it: a FIFO
+	// with no reader on the other end is where a write blocks forever. Starting it
+	// here, in onStart, is what keeps mcli from hanging before the server exists.
+	var stopPump func()
+	onStart := func(pid int) {
 		srv.Pid = pid
 		if err := a.Store.Save(); err != nil {
 			a.Log.Warnf("%s", err)
 		}
+		if !detach && cmd.ConsoleViaPipe {
+			stopPump = a.pumpConsole(o.Dir, name, startedAt)
+		}
+	}
+
+	if !detach {
+		// Foreground: the launcher owns the console (input through the FIFO, output
+		// to the terminal). That is what makes Ctrl+C and a `timeout`'s SIGTERM stop
+		// the server the way it understands — through its own `stop` — instead of
+		// killing a JVM that has no signal handler and saving nothing.
+		cmd.ConsoleViaPipe = mcserver.ConsolePipesSupported()
+		stopForwarding := a.forwardSignals(srv, name)
+		defer stopForwarding()
+		defer func() {
+			if stopPump != nil {
+				stopPump()
+			}
+		}()
+	}
+
+	pid, code, err := cmd.Run(!detach, onStart)
+	if err != nil {
+		return a.fatal(err)
+	}
+	if detach {
 		a.Log.Printf("%s", i18n.T("srv.detached", pid, filepath.Join(o.Dir, "logs", "latest.log")))
 		if mcserver.ConsolePipesSupported() {
 			a.Log.Printf("%s", i18n.T("srv.attach_hint_detached", name, name))
 		}
 		return 0
 	}
-	srv.Pid = pid
+	// The server is gone: whoever stopped it, the stale pid must not stay behind,
+	// or `mcli server stop` would later signal whatever process took that number.
+	srv.Pid = 0
 	if code != 0 {
 		_ = a.Store.Save()
 		return a.fatal(fmt.Errorf("%s", i18n.T("srv.exited_bad", code)))
@@ -605,9 +635,125 @@ func (a *App) serverStart(args []string) int {
 	return 0
 }
 
-// serverStop asks a detached server to shut down. A server saves its world on
-// the way out, so it is signalled, never killed: the process gets SIGINT, which
-// is exactly what Ctrl+C in its console would send.
+// forwardSignals makes a foreground server exit the way its own console would: the
+// signals that reach mcli are turned into the server's own `stop` command, and mcli
+// waits for it to save and close. A signal that killed the JVM outright — which is
+// what both SIGINT and SIGTERM do to a headless server — leaves the world at the
+// last autosave, and a `timeout 100 mcli server start` used to leave the server
+// running with nothing in the state pointing at it.
+func (a *App) forwardSignals(srv *store.Server, name string) func() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, foregroundSignals()...)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case sig := <-sigs:
+				a.stopServerGracefully(srv, name, sig.String())
+			}
+		}
+	}()
+	return func() {
+		signal.Stop(sigs)
+		close(done)
+	}
+}
+
+// stopServerGracefully asks a running server to stop, preferring its own console
+// command over a signal, and saying which one it used.
+func (a *App) stopServerGracefully(srv *store.Server, name, why string) {
+	pid := srv.Pid
+	if pid <= 0 {
+		return
+	}
+	if mcserver.ConsolePipesSupported() {
+		a.Log.Printf("%s", i18n.T("srv.forwarding", name, why))
+		if err := a.writeConsole(srv, "stop"); err == nil {
+			return
+		}
+		a.Log.Warnf("%s", i18n.T("srv.stop_no_console", name, "console pipe"))
+	}
+	if err := signalServer(pid); err != nil {
+		a.Log.Warnf("%s", i18n.T("srv.forward_failed", err))
+	}
+}
+
+// pumpConsole feeds mcli's own input into the server's console FIFO, so a foreground
+// server behaves like an attached one: what a person types reaches it, a piped script
+// reaches it, and mcli can write into the same channel to stop it.
+//
+// It is called after the server has started, so opening the pipe cannot block — and
+// it pumps whatever stdin happens to be: a terminal, a pipe from another command,
+// `/dev/null` (which simply reports EOF and ends the pump).
+func (a *App) pumpConsole(dir, name string, startedAt time.Time) func() {
+	in, err := mcserver.OpenConsoleWriter(dir)
+	if err != nil {
+		a.Log.Warnf("%s", i18n.T("srv.stop_no_console", name, err))
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		defer in.Close()
+		// Nothing is forwarded before the server can take it: a command that arrives
+		// during startup is answered with "An unexpected error occurred while trying
+		// to execute that command" (measured, with a script feeding `list` and
+		// `stop`) because the dispatcher is not up yet. What a person types meanwhile
+		// waits in their terminal, and what a pipe holds waits in the pipe.
+		if !mcserver.WaitReady(dir, startedAt, 120*time.Second) {
+			a.Log.Warnf("%s", i18n.T("srv.console_late", name))
+		}
+		buf := make([]byte, 1024)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			n, err := os.Stdin.Read(buf)
+			if n > 0 {
+				if _, werr := in.Write(buf[:n]); werr != nil {
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return func() { close(done) }
+}
+
+// signalServer asks a server to stop the graceful way: SIGINT, which is what its
+// own console sends on Ctrl+C, so the world is saved on the way out.
+func signalServer(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return proc.Signal(os.Interrupt)
+}
+
+// killProcess ends a server the hard way. It is what `server stop --force` uses,
+// and the only way to stop one on a platform that cannot deliver a console
+// interrupt.
+func killProcess(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return proc.Kill()
+}
+
+// serverStop asks a server to shut down, and waits for it to be gone.
+//
+// The way it asks matters. A signal is not a graceful stop for a headless JVM:
+// measured on this box, both SIGINT and SIGTERM end the process outright, with no
+// "Stopping server" and no "Saving worlds" in the server's own log — the world only
+// keeps what the last autosave wrote. The server's console command `stop` does the
+// real thing, so that is what mcli sends when it has a console channel; the signal
+// is the fallback, and then mcli says what that fallback may cost.
 func (a *App) serverStop(args []string) int {
 	f, err := parseFlags("server stop", args, map[string]flagSpec{
 		"force": {},
@@ -641,24 +787,35 @@ func (a *App) serverStop(args []string) int {
 		}
 		return a.fatal(fmt.Errorf("%s", i18n.T("srv.not_running", name)))
 	}
-	a.Log.Printf("%s", i18n.T("srv.stopping", name, pid))
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return a.fatal(err)
-	}
-	if err := proc.Signal(os.Interrupt); err != nil {
-		// Windows cannot deliver a console interrupt; a hard kill is the only way
-		// out there, and the world is saved by the server's own autosave.
-		a.Log.Warnf("%s", i18n.T("srv.stop_unsupported", pid))
-		if f.boolean("force") {
-			if err := proc.Kill(); err != nil {
-				return a.fatal(err)
+
+	switch {
+	case f.boolean("force"):
+		// The caller asked for the hard way, whatever the console could do.
+		a.Log.Printf("%s", i18n.T("srv.stopping_force", name, pid))
+		if err := killProcess(pid); err != nil {
+			return a.fatal(err)
+		}
+	case mcserver.ConsolePipesSupported():
+		// The server's own `stop`: it saves the world and closes its listeners.
+		a.Log.Printf("%s", i18n.T("srv.stopping_console", name, pid))
+		if err := a.writeConsole(srv, "stop"); err != nil {
+			a.Log.Warnf("%s", i18n.T("srv.stop_no_console", name, err))
+			if err := signalServer(pid); err != nil {
+				return a.fatal(fmt.Errorf("%s", i18n.T("srv.stop_force_hint", name)))
 			}
-		} else {
+		}
+	default:
+		// No console channel here: a signal is all mcli has, and the honest thing
+		// is to say that the world keeps its last autosave rather than claiming a
+		// save that may not happen.
+		a.Log.Printf("%s", i18n.T("srv.stopping_signal", name, pid))
+		if err := signalServer(pid); err != nil {
+			a.Log.Warnf("%s", i18n.T("srv.stop_unsupported", pid))
 			return a.fatal(fmt.Errorf("%s", i18n.T("srv.stop_force_hint", name)))
 		}
 	}
-	// A world is saved on the way out, so give it time rather than assuming.
+
+	// Give it time to save and close: a world write is not instant.
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, alive, _ := serverProcess(pid, dir); !alive {
@@ -672,6 +829,29 @@ func (a *App) serverStop(args []string) int {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return a.fatal(fmt.Errorf("%s", i18n.T("srv.stop_timeout", name)))
+}
+
+// writeConsole sends one line to a running server's console, waiting for the server
+// to report readiness first: a command that arrives before its dispatcher exists is
+// answered with "An unexpected error occurred while trying to execute that command",
+// so whoever asks — `server cmd`, `server stop`, a forwarded signal — waits the same
+// way the console pump does.
+func (a *App) writeConsole(srv *store.Server, line string) error {
+	dir := a.serverDir(srv)
+	since := srv.StartedAt
+	if since.IsZero() {
+		since = time.Now().Add(-24 * time.Hour)
+	}
+	if !mcserver.WaitReady(dir, since, 120*time.Second) {
+		a.Log.Warnf("%s", i18n.T("srv.console_late", srv.Name))
+	}
+	in, err := mcserver.OpenConsoleWriter(dir)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	_, err = fmt.Fprintln(in, line)
+	return err
 }
 
 // serverProcess reports whether pid is alive and whether it is the server of
@@ -840,13 +1020,8 @@ func (a *App) serverCmd(args []string) int {
 	if !mcserver.ConsolePipesSupported() {
 		return a.fatal(fmt.Errorf("%s", i18n.T("srv.attach_unsupported")))
 	}
-	in, err := mcserver.OpenConsoleWriter(a.serverDir(srv))
-	if err != nil {
-		return a.fatal(err)
-	}
-	defer in.Close()
 	line := strings.Join(f.args[1:], " ")
-	if _, err := fmt.Fprintln(in, line); err != nil {
+	if err := a.writeConsole(srv, line); err != nil {
 		return a.fatal(err)
 	}
 	a.Log.Printf("%s", i18n.T("srv.cmd_sent", line))

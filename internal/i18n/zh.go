@@ -380,6 +380,13 @@ var zh = map[string]string{
 	"upd.pack_kept_modified":      "保留 %s：它已经和整合包装上去的内容不一样了，现在是你自己的文件",
 	"upd.pack_kept_unrecorded":    "保留 %s：整合包没有记录过它，mcli 不能删",
 	"upd.pack_kept_unreadable":    "保留 %s：读不了它（%v）",
+	"srv.forwarding":              "收到 %s：让服务器 %s 通过它自己的控制台保存并停止",
+	"srv.forward_failed":          "没能把信号转给服务器：%v",
+	"srv.stopping_console":        "让服务器 %s（pid %d）通过它自己的控制台停止；它会先保存存档",
+	"srv.stopping_signal":         "用信号让服务器 %s（pid %d）停止；无头服务器可能来不及保存 —— 存档保留在最后一次自动保存",
+	"srv.stopping_force":          "强制结束服务器 %s（pid %d）；存档保留在最后一次自动保存",
+	"srv.stop_no_console":         "联系不上 %s 的控制台（%v）：退回到发信号",
+	"srv.console_late":            "服务器还没有报告就绪；仍然把输入转发给 %s",
 	// ---------------------------------------------------------------- mod loaders (a choice)
 	"loader.bad":             "未知的加载器 %q；可选值：%s",
 	"loader.needs_game":      "模组加载器需要依附一个游戏版本",

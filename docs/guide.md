@@ -63,7 +63,7 @@ mcli server start survival              # attached: the console is yours, Ctrl+C
 mcli server start survival --detach     # background, pid recorded
 mcli server attach survival             # follow output and type commands; Ctrl+C only leaves
 mcli server cmd survival say hello      # one command, no session
-mcli server stop survival               # SIGINT, so the world is saved
+mcli server stop survival               # the server's own `stop`, so the world is saved
 ```
 
 The server lives in `<minecraft_dir>/servers/<name>`. `eula.txt` and
@@ -180,7 +180,7 @@ them from the repository root, and a target that stops compiling is treated as a
 | automatic heap sizing | yes | yes | yes | Windows asks kernel32, macOS half the physical total |
 | servers, foreground and detached | yes | yes | yes | detached writes `logs/console.log` |
 | `server attach` / `server cmd` | yes | **no** | yes | needs a FIFO for the server's input |
-| graceful `server stop` | yes | **no** | yes | Windows: `--force` kills it, autosave keeps the world |
+| `server stop` through the server's console | yes | **no** | yes | Windows has no FIFO: `--force` kills it and the world keeps its last autosave |
 | free-space line in `doctor` | yes | yes | yes | Windows asks kernel32 |
 
 Where something is missing, mcli says so and names the alternative rather than

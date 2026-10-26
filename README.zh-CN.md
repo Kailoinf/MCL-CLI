@@ -190,14 +190,18 @@ mcli 在 `~/.mcl-cli/` 里放五个小 TOML 文件：
 ```sh
 mcli server create survival --version 26.3 --port 25566 --xmx 4G   # 打印 EULA 网址并要求按 Y
 mcli server start survival                                          # 首次约 60MB，之后前台运行
-mcli server start survival --detach                                 # 或后台运行，记录 pid
+mcli server start survival --detach                                 # 或后台运行；两种模式下 pid 都会记下
 mcli server attach survival                                         # 接上那个控制台，直接敲命令
-mcli server stop survival                                           # 只有 --detach 启动的才需要手动停
+mcli server stop survival                                           # 用服务器自己的 stop：先保存，再退出
+mcli server stop survival --force                                    # 直接结束，并如实说明
+printf 'list\nstop\n' | mcli server start survival                   # 也可以用脚本喂控制台
 ```
 
 * 目录是 `<minecraft_dir>/servers/<名称>`：jar、存档、`eula.txt`、`server.properties` 都在里面，别的操作不会碰它们；已存在的 `server.properties` 永不覆写。
 * EULA 不会替你同意：先打印网址，再问一次；`--eula` 或全局 `--yes` 只是跳过提问，不等于不提。
-* `--detach` 会后台启动并记录 pid，之后 `mcli server stop` 用它发信号。后台服务器的控制台输出在 `<dir>/logs/console.log`，服务器自己的日志在 `<dir>/logs/latest.log`。
+* `--detach` 会后台启动。后台服务器的控制台输出在 `<dir>/logs/console.log`，服务器自己的日志在 `<dir>/logs/latest.log`。
+* **停止服务器要走它自己的控制台，而不是绕过它。** 无头 JVM 并没有启动器可以依赖的信号处理器：在本机实测，SIGINT 和 SIGTERM 都会让进程直接结束，它自己的日志里既没有 `Stopping server` 也没有 `Saving worlds` —— 存档只保留到最后一次自动保存为止。所以 `mcli server stop` 是往它的控制台写入服务器自己的 `stop` 命令，并等它保存完再关闭；`--force` 则直接结束，并如实说明这是强制结束。
+* pid 在服务器启动那一刻就记下（两种模式都一样），所以被误杀的 mcli 留下的服务器仍然能被 `server list` 看到、也仍然停得掉。前台运行时 mcli 也接管控制台，于是 Ctrl+C、`timeout` 的 SIGTERM、以及 `mcli server cmd <名称> stop` 都会在退出前保存存档。
 * Java 与客户端同一套规则：用版本 JSON 里的 `javaVersion.majorVersion`，缺了就由 mcli 安装。
 * `server attach` 依赖 FIFO（Linux / macOS）；其它系统会直接提示不支持，改用前台 `server start`。
 

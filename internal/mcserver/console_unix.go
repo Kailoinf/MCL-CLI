@@ -27,8 +27,11 @@ func OpenConsoleInput(dir string) (*os.File, error) {
 	return os.OpenFile(path, os.O_RDWR, 0)
 }
 
-// OpenConsoleWriter opens the same FIFO for a person attaching to the console.
-// The server holds a read-write handle, so this never blocks.
+// OpenConsoleWriter opens the same FIFO to write a command into it. It opens
+// read-write on purpose: a FIFO opened write-only blocks until some reader is
+// there, so a caller that writes before the server has started would hang forever
+// instead of reporting anything. Read-write returns at once, and the server still
+// reads every line written by anyone holding the pipe.
 func OpenConsoleWriter(dir string) (*os.File, error) {
-	return os.OpenFile(ConsoleInputPath(dir), os.O_WRONLY, 0)
+	return os.OpenFile(ConsoleInputPath(dir), os.O_RDWR, 0)
 }
