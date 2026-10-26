@@ -79,6 +79,11 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* 操作手册（skill）按编写规范重写了一遍：原来是 429 行不断追加的教训，现在拆成 150 行的指南
+  加上 `references/verification-recipes.md` 与 `references/service-facts.md`。它此前已经漂成
+  一份日志（带日期的「已验证 …」记录）、这一页内容的第二份抄本，而且还自相矛盾 —— 其中一行仍写着
+  用 SIGINT 停止服务器「存档会在退出时保存」，而上面的实测已经证明信号什么都不保存。现在规则留在
+  skill 里，事实与状态留在这一页。
 * 全新的 `pnpm install` 会以 `ERR_PNPM_IGNORED_BUILDS`（`Ignored build scripts:
   esbuild@0.21.5`）停下，也就是说文档里写的「怎么构建文档站」在一个干净克隆里跑不通。原因：设置之前
   放在 package.json 的 `pnpm` 字段里，而 pnpm 10 以后直接忽略它（它自己会说「The "pnpm" field in

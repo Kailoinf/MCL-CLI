@@ -75,6 +75,13 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* The working skill was rewritten into the shape the authoring guide asks for: 429
+  lines of appended lessons became a 150-line guide plus
+  `references/verification-recipes.md` and `references/service-facts.md`. It had
+  drifted into a log (dated "verified …" notes), a second copy of what belongs on this
+  page, and two contradictions of its own — one line still said to stop a server with
+  SIGINT because "the world is saved on the way out", after the measurement above
+  showed a signal saves nothing. Rules now live in the skill, facts and state here.
 * A fresh `pnpm install` stopped with `ERR_PNPM_IGNORED_BUILDS` (`Ignored build
   scripts: esbuild@0.21.5`), so the documented way to build the docs site did not
   work from a clean clone. The setting had been in a `pnpm` field in package.json,

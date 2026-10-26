@@ -314,9 +314,11 @@ field in package.json, and esbuild's build script has to be allowed there
 (`allowBuilds`) — without it a fresh `pnpm install` stops with
 `ERR_PNPM_IGNORED_BUILDS` and the site cannot be built.
 
-`skill/SKILL.md` is the working guide for anyone (or anything) editing mcli:
-where things live, how to verify a change without a display, and the traps that
-have already been hit. It is updated in the same commit as the feature it
+`skill/SKILL.md` is the working guide for anyone (or anything) editing mcli: the
+rules that change behaviour, how to verify a change without a display, and the traps
+that have already been hit. The long recipes live beside it in
+`skill/references/` (verification, service facts), and the code map and current state
+are in `docs/status.md`. The skill is updated in the same commit as the feature it
 describes.
 
 ## License

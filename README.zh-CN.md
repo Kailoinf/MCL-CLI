@@ -276,8 +276,9 @@ pnpm 10 以后从 `pnpm-workspace.yaml` 读配置，而不是 package.json 里�
 esbuild 的构建脚本必须在里面放行（`allowBuilds`）—— 否则全新的 `pnpm install` 会以
 `ERR_PNPM_IGNORED_BUILDS` 停下，站点根本构建不出来。
 
-`skill/SKILL.md` 是给改这个项目的人（或 agent）看的操作手册：代码都在哪、没有显示器时怎么验证、
-已经踩过哪些坑。它和它描述的功能在同一个提交里更新。
+`skill/SKILL.md` 是给改这个项目的人（或 agent）看的操作手册：会改变行为的规则、没有显示器时怎么
+验证、已经踩过哪些坑。长配方放在旁边的 `skill/references/`（验证、服务事实），代码地图与当前状态在
+`docs/status.md`。它和它描述的功能在同一个提交里更新。
 
 ## 许可证
 
