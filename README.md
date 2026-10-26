@@ -5,7 +5,8 @@ A pure command line launcher for **Minecraft: Java Edition**, written in Go with
 interactive wizard: everything is a flag.
 
 * Chinese docs: [README.zh-CN.md](README.zh-CN.md)
-* Agent/conventions docs: [AGENTS.md](AGENTS.md)
+* Rules for working on the code: [AGENTS.md](AGENTS.md)
+* What is verified right now, and what is left: [docs/status.md](docs/status.md)
 * Architecture and decisions: [docs/architecture.md](docs/architecture.md),
   [docs/design-decisions.md](docs/design-decisions.md)
 
