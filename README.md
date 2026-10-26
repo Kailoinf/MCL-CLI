@@ -88,8 +88,8 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli instance import <version> [--as <name>] [--force]` | adopt an existing install (official launcher, PCL, HMCL, a modded profile) |
 | `mcli fabric list <game> [--limit N]` | the Fabric loader builds published for a game version |
 | `mcli fabric list <game> [--limit N]` | the loader builds Fabric publishes for a game version (installing is the `--loader` choice below) |
-| `mcli search <query> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <game>] [--loader <loader>] [--limit N] [--offset N]` | search Modrinth (one query, one page) |
-| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--pack-version <v>] [--dry-run]` | install a project's matching file into an instance; a modpack is read and installed as a pack |
+| `mcli search <query> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <game>] [--loader <loader>] [--limit N] [--offset N] [--source modrinth\|curseforge]` | search a catalogue (one query, one page); CurseForge needs your own API key |
+| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--pack-version <v>] [--source modrinth\|curseforge] [--dry-run]` | install a project's matching file into an instance; a modpack is read and installed as a pack |
 | `mcli mods [<instance>]` | what an instance already has in mods/, resourcepacks/, shaderpacks/ |
 | `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg ...] [--eula]` | register a server: its own directory, world and port; the Minecraft EULA is printed and has to be accepted |
 | `mcli server set <name> [--version <v>] [--port N] [--java <path>] [--xmx 2G] [--xms 512M] [--jvm-arg …] [--clear-jvm-args] [--eula]` | change a server; `--eula` accepts the licence later, printing the URL and asking |
@@ -104,7 +104,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance (and its saves) |
 | `mcli launch <name>|<version>|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
 | `mcli refresh [--versions] [--all]` | force-refresh cached metadata |
-| `mcli config [get\|set\|unset\|list\|path]` | read or change settings |
+| `mcli config [get\|set\|unset\|list\|path]` | read or change settings; `config set curseforge_api_key <key>` stores the CurseForge key, and `get`/`list` report its length, never its value |
 | `mcli java [list \| install <major> [--force] \| which <version>]` | inspect or install Java runtimes (`--force` reinstalls an incomplete one) |
 | `mcli version`, `mcli help [command]` | self-explanatory |
 

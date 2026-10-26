@@ -83,3 +83,19 @@ running status (what was verified when, what broke) belongs in `docs/status.md`.
   `Saving worlds` are the proof of a graceful stop.
 - The EULA URL is `https://aka.ms/MinecraftEULA`; mcli prints it and asks, never
   accepts it for the user.
+
+## CurseForge (needs a per-user key)
+
+* Base `https://api.curseforge.com`; the key travels in the `x-api-key` header and is
+  required by every endpoint. `GET /v1/mods/search?gameId=432&classId=…&searchFilter=…&gameVersion=…&modLoaderType=…&index=…&pageSize=…`,
+  `GET /v1/mods/{id}/files`, `GET /v1/mods/{id}`. A refused key is 401/403 — do not
+  report it as a network failure.
+* gameId Minecraft = 432. Class ids: mods 6, resource packs 12, modpacks 4471, shader
+  packs 6552, data packs 6945, worlds 17. modLoaderType: forge 1, fabric 4, quilt 5,
+  neoforge 6. Hash algo 1 = SHA-1, 2 = MD5.
+* A file's `gameVersions` mixes the game version with loader names ("1.21.4", "Fabric"),
+  so both filters are scans of the same list.
+* The key is a credential: store it in `mcli.toml`, mask it in every read path
+  (`config.Secret`), never log it, never print it.
+* Verified as far as it can be without a working key: a wrong key reaches the API and
+  comes back 403, which the CLI turns into "the key was rejected".

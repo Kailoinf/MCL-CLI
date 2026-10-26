@@ -87,6 +87,22 @@ alternatives, never a silent fallback. The profile Fabric publishes is written
 into mcli's own `versions/` directory, so it works offline afterwards and can be
 launched, repaired and diagnosed like any other version.
 
+## CurseForge needs your own API key
+
+Modrinth needs nothing. CurseForge needs an API key belonging to the person using it,
+so mcli will not ship one:
+
+```sh
+mcli config set curseforge_api_key <your key>   # stored in mcli.toml
+mcli config get curseforge_api_key              # reports the length, never the value
+mcli search jei --source curseforge
+mcli add jei --instance modern --source curseforge
+```
+
+The key is sent as `x-api-key`, never printed, and never written to a log. Without one,
+`search`/`add` with `--source curseforge` stop and tell you this exact command, and a
+key CurseForge refuses is reported as refused, not as a network problem.
+
 ## Mods and content
 
 Modrinth is the source mcli uses — it needs no API key, and its API is small enough

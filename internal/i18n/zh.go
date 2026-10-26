@@ -237,12 +237,15 @@ var zh = map[string]string{
 	"cli.toml_note":         "mcli.toml 存配置，state.toml 存账号与实例（权限 0600）",
 
 	// ---------------------------------------------------------------- config command output
-	"cfg.list_header": "%-24s %-26s %s",
-	"cfg.current":     "%s = %s",
-	"cfg.set_ok":      "%s = %s",
-	"cfg.unset_ok":    "%s 已恢复默认值（%s）",
-	"cfg.not_set":     "%s 为空",
-	"cfg.available":   "可用配置项：",
+	"cfg.list_header":             "%-24s %-26s %s",
+	"cfg.desc.curseforge_api_key": "CurseForge 的 API key，只有那个来源需要（永不打印）",
+	"cfg.secret_set":              "已设置（%d 个字符，不显示内容）",
+	"cfg.secret_unset":            "未设置",
+	"cfg.current":                 "%s = %s",
+	"cfg.set_ok":                  "%s = %s",
+	"cfg.unset_ok":                "%s 已恢复默认值（%s）",
+	"cfg.not_set":                 "%s 为空",
+	"cfg.available":               "可用配置项：",
 
 	// ---------------------------------------------------------------- extra
 	"mcv.latest":                 "最新正式版 %s，最新快照 %s",
@@ -416,6 +419,14 @@ var zh = map[string]string{
 	"doc.repair_srv_corrupt":      "服务器 %s：jar 与版本不一致；重新取一遍（%s）",
 	"doc.repair_srv_plan":         "服务器 %s：正在取 %s（%s）",
 	"doc.repair_srv_ok":           "服务器 %s：jar 已就位（%s）",
+	"mod.bad_source":              "未知来源 %q；可选值：%s",
+	"cf.no_key":                   "CurseForge 需要你自己的 API key；用 `mcli config set curseforge_api_key <key>` 设一个（它保存在 mcli.toml 里，且永不打印）",
+	"cf.bad_key":                  "CurseForge 拒绝了那个 API key；用 `mcli config get curseforge_api_key` 检查，它只会报告长度而不是值",
+	"cf.not_found":                "CurseForge 上没有叫 %q 的项目",
+	"cf.type_unsupported":         "%s 属于 mcli 还装不了的 CurseForge 类型（class %d）；模组、资源包、光影包、数据包是可以的",
+	"cf.no_file":                  "%s 没有发布适配 Minecraft %s 的文件",
+	"cf.no_hash":                  "%s 没有声明 SHA-1，这次下载无法校验",
+	"cf.deps":                     "该文件需要另外 %d 个项目（id %s）；mcli 绝不会静默安装依赖",
 	// ---------------------------------------------------------------- mod loaders (a choice)
 	"loader.bad":             "未知的加载器 %q；可选值：%s",
 	"loader.needs_game":      "模组加载器需要依附一个游戏版本",

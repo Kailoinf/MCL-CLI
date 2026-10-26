@@ -47,6 +47,9 @@ type Config struct {
 	DefaultXms        string `toml:"default_xms" desc:"cfg.desc.default_xms"`
 	ExtraJvmArgs      string `toml:"extra_jvm_args" desc:"cfg.desc.extra_jvm_args"`
 
+	// --- content sources -------------------------------------------------
+	CurseForgeKey string `toml:"curseforge_api_key" desc:"cfg.desc.curseforge_api_key" secret:"1"`
+
 	// --- launch ---------------------------------------------------------
 	ConfirmLargeDownload bool `toml:"confirm_large_download" desc:"cfg.desc.confirm_large_download"`
 	LargeDownloadMB      int  `toml:"large_download_mb" desc:"cfg.desc.large_download_mb"`
@@ -218,6 +221,17 @@ func (c *Config) Reset(key string) (string, error) {
 	v := reflect.ValueOf(c).Elem().FieldByIndex(f.Index)
 	v.Set(dv)
 	return c.Get(key)
+}
+
+// Secret reports whether a key's value must never be printed. An API key is a
+// credential: `config get` and `config list` show whether it is set and how long it
+// is, never the value itself.
+func Secret(key string) bool {
+	f, err := fieldByKey(key)
+	if err != nil {
+		return false
+	}
+	return f.Tag.Get("secret") != ""
 }
 
 // Describe returns the localized description attached to a key.

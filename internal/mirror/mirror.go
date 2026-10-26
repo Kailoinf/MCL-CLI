@@ -28,7 +28,10 @@ const (
 // Candidate is one place a file can be fetched from.
 type Candidate struct {
 	URL    string
-	Source string // "bmclapi" or "mojang"
+	Source string // "bmclapi", "mojang", "modrinth", "curseforge", …
+	// Headers carry what a particular source needs — an API key, for instance.
+	// They are never logged: a credential must not reach a terminal or a log file.
+	Headers map[string]string
 }
 
 // Mapper builds candidate lists.

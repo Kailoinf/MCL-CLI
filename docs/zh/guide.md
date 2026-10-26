@@ -68,6 +68,21 @@ mcli instance set modded --loader vanilla                     # 也能切回原�
 范围会直接报错并列出可选值，不会悄悄退回默认。Fabric 发布的 profile 会写入 mcli 自己的
 `versions/` 目录，因此之后离线也能用，并且可以像其他任何版本一样启动、修复和诊断。
 
+## CurseForge 需要你自己的 API key
+
+Modrinth 什么都不需要；CurseForge 需要属于使用者本人的 API key，所以 mcli 不会自带一个：
+
+```sh
+mcli config set curseforge_api_key <你的 key>   # 保存在 mcli.toml
+mcli config get curseforge_api_key              # 只报告长度，不显示值
+mcli search jei --source curseforge
+mcli add jei --instance modern --source curseforge
+```
+
+这个 key 以 `x-api-key` 发送，永不打印、也永不写进日志。没有 key 时，带 `--source curseforge`
+的 `search`/`add` 会停下并告诉你执行的正是上面那条命令；被 CurseForge 拒绝的 key 会明确说
+「被拒绝」，而不是伪装成网络故障。
+
 ## 模组与资源
 
 mcli 用 Modrinth 作为来源 —— 它不需要 API key，接口也小到可以如实包一层。

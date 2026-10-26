@@ -283,7 +283,7 @@ func (p Policy) FetchBytes(cands []mirror.Candidate, desc string) ([]byte, strin
 	cands = p.Health.Order(cands)
 	for attempt := 1; attempt <= attempts; attempt++ {
 		for _, c := range cands {
-			body, err := p.getBytes(c.URL)
+			body, err := p.getBytes(c)
 			if err == nil {
 				p.Health.OK(c.Source)
 				return body, c.Source, nil
@@ -298,30 +298,61 @@ func (p Policy) FetchBytes(cands []mirror.Candidate, desc string) ([]byte, strin
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
 	}
-	return nil, "", fmt.Errorf("%s", i18n.T("dl.fetch_failed", desc, lastErr))
+	// The cause is kept wrapped, not just printed: a caller has to be able to tell a
+	// refused key from a dead network without matching on message text.
+	return nil, "", FetchError{Desc: desc, Err: lastErr}
 }
 
-func (p Policy) getBytes(u string) ([]byte, error) {
+// FetchError is what a fetch that ran out of candidates reports. Unwrap exposes the
+// last cause, so errors.As still finds an HTTPStatusError inside it.
+type FetchError struct {
+	Desc string
+	Err  error
+}
+
+func (e FetchError) Error() string { return i18n.T("dl.fetch_failed", e.Desc, e.Err) }
+
+func (e FetchError) Unwrap() error { return e.Err }
+
+func (p Policy) getBytes(c mirror.Candidate) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout())
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", UserAgent)
+	for name, value := range c.Headers {
+		req.Header.Set(name, value)
+	}
 	resp, err := p.streamClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return nil, HTTPStatusError{Code: resp.StatusCode, Source: c.Source}
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		return nil, err
 	}
 	return data, nil
+}
+
+// HTTPStatusError is a response the server refused. It is a type rather than a
+// string so a caller can tell "your key was rejected" (403) from "the network is
+// down" without matching on message text.
+type HTTPStatusError struct {
+	Code   int
+	Source string
+}
+
+func (e HTTPStatusError) Error() string {
+	if e.Source != "" {
+		return fmt.Sprintf("HTTP %d from %s", e.Code, e.Source)
+	}
+	return fmt.Sprintf("HTTP %d", e.Code)
 }
 
 // UserAgent is sent with every request.

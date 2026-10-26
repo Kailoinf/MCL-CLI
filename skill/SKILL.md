@@ -66,6 +66,7 @@ small steps as each piece passes.
 | Check without an account | `./mcli doctor --all`, `./mcli repair <instance> --yes` |
 | Real server end to end | `./mcli server create/start/stop/attach/cmd` |
 | Docs site | `pnpm docs:build` (settings: `pnpm-workspace.yaml`, not package.json) |
+| CurseForge | `./mcli search <q> --source curseforge` (needs `config set curseforge_api_key <key>`) |
 
 ## Procedure
 
@@ -89,7 +90,10 @@ small steps as each piece passes.
   key in both `internal/i18n/en.go` and `internal/i18n/zh.go`. `go test ./...` fails
   on a missing key, drifting catalogs, or a call passing the wrong number of verbs.
 - **Zero third-party modules**, TOML and SQLite included. Ask before adding any.
-- **Never print credential values** — show paths, lengths or counts.
+- **Never print credential values** — show paths, lengths or counts. The decision is
+  made in code, not by habit: a config field tagged `secret:"1"` is reported by
+  `config.Secret(key)` as "set (N characters)", so no read path can leak it by
+  accident.
 - **Tables pad by display width**, not bytes (`table.go`), or a CJK path shifts
   every following column.
 - **One on-disk state shape, no migration.** mcli has no users on an older layout:
@@ -140,6 +144,10 @@ small steps as each piece passes.
   that never ends and it looks like a hang.
 - Do not "fix" a pack, profile or instance by rewriting its paths or ids: refuse and
   say what to run instead (a mismatch that is stated is worth more than a guess).
+- CurseForge needs an API key belonging to the user; without one, name the exact
+  command that sets it. A refused key (401/403) is `ErrKeyRejected`, not a network
+  error — and the live success path cannot be verified here, so say so instead of
+  implying otherwise.
 - The EULA is printed, never assumed: `--eula`/`--yes` skip the question, not the
   notice. Accepting it writes `eula.txt` outright (`mcserver.AcceptEula`) — going
   through `WriteFiles` silently did nothing when the file already said false.

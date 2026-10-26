@@ -85,8 +85,8 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli instance import <版本> [--as <名称>] [--force]` | 接管已有安装（官方启动器 / PCL / HMCL / 整合包） |
 | `mcli fabric list <版本> [--limit N]` | 某个游戏版本可用的 Fabric 加载器列表 |
 | `mcli fabric list <版本> [--limit N]` | 列出某个游戏版本可用的 Fabric 加载器（安装走下面的 --loader 选项） |
-| `mcli search <关键词> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <版本>] [--loader <加载器>] [--limit N] [--offset N]` | 在 Modrinth 搜索（一次查询、一页结果） |
-| `mcli add <项目> [--instance <名称>] [--version <版本>] [--loader <加载器>] [--pack-version <版本>] [--dry-run]` | 把项目的匹配文件装进实例；整合包会被读取并按整合包安装 |
+| `mcli search <关键词> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <版本>] [--loader <加载器>] [--limit N] [--offset N] [--source modrinth\|curseforge]` | 在某个目录站搜索（一次查询、一页结果）；CurseForge 需要你自己的 API key |
+| `mcli add <项目> [--instance <名称>] [--version <版本>] [--loader <加载器>] [--pack-version <版本>] [--source modrinth\|curseforge] [--dry-run]` | 把项目的匹配文件装进实例；整合包会被读取并按整合包安装 |
 | `mcli mods [<名称>]` | 实例里已有的 mods/、resourcepacks/、shaderpacks/ |
 | `mcli server create <名称> --version <版本> [--java <路径>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <路径>] [--jvm-arg ...] [--eula]` | 注册服务器：独立目录、存档与端口；会打印 Minecraft EULA 并要求确认 |
 | `mcli server set <名称> [--version <版本>] [--port N] [--java <路径>] [--xmx 2G] [--xms 512M] [--jvm-arg …] [--clear-jvm-args] [--eula]` | 修改服务器；`--eula` 用于事后接受协议（打印网址并提问） |
@@ -101,7 +101,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli delete <名称> [--keep-files] [--yes]` | 删除实例（连同存档） |
 | `mcli launch <名称>|<版本>|--last [--version <版本>] [--java <路径>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <账号>]` | 按需安装并启动 |
 | `mcli refresh [--versions] [--all]` | 强制刷新已缓存元数据 |
-| `mcli config [get\|set\|unset\|list\|path]` | 读写设置 |
+| `mcli config [get\|set\|unset\|list\|path]` | 读写设置；`config set curseforge_api_key <key>` 保存 CurseForge 的 key，`get`/`list` 只报告长度、不显示值 |
 | `mcli java [list \| install <major> [--force] \| which <版本>]` | 查看或安装 Java（--force 重装没装完的运行时） |
 | `mcli version`、`mcli help [命令]` | 版本与帮助 |
 

@@ -237,12 +237,15 @@ var en = map[string]string{
 	"cli.toml_note":         "mcli.toml holds the configuration, state.toml the accounts and instances (0600)",
 
 	// ---------------------------------------------------------------- config command output
-	"cfg.list_header": "%-24s %-26s %s",
-	"cfg.current":     "%s = %s",
-	"cfg.set_ok":      "%s = %s",
-	"cfg.unset_ok":    "%s reset to default (%s)",
-	"cfg.not_set":     "%s is empty",
-	"cfg.available":   "valid keys:",
+	"cfg.list_header":             "%-24s %-26s %s",
+	"cfg.desc.curseforge_api_key": "CurseForge API key, needed for that source only (never printed)",
+	"cfg.secret_set":              "set (%d characters, not shown)",
+	"cfg.secret_unset":            "not set",
+	"cfg.current":                 "%s = %s",
+	"cfg.set_ok":                  "%s = %s",
+	"cfg.unset_ok":                "%s reset to default (%s)",
+	"cfg.not_set":                 "%s is empty",
+	"cfg.available":               "valid keys:",
 
 	// ---------------------------------------------------------------- extra (added during CLI work)
 	"mcv.latest":                 "latest release %s, latest snapshot %s",
@@ -416,6 +419,14 @@ var en = map[string]string{
 	"doc.repair_srv_corrupt":      "server %s: the jar does not match the version; fetching it again (%s)",
 	"doc.repair_srv_plan":         "server %s: fetching %s (%s)",
 	"doc.repair_srv_ok":           "server %s: jar in place (%s)",
+	"mod.bad_source":              "unknown source %q; the choices are %s",
+	"cf.no_key":                   "CurseForge needs an API key of your own; set one with `mcli config set curseforge_api_key <key>` (it is stored in mcli.toml and never printed)",
+	"cf.bad_key":                  "CurseForge refused that API key; check it with `mcli config get curseforge_api_key`, which reports its length instead of its value",
+	"cf.not_found":                "CurseForge has no project called %q",
+	"cf.type_unsupported":         "%s is a CurseForge content type mcli cannot install (class %d); mods, resource packs, shader packs and data packs work",
+	"cf.no_file":                  "%s publishes no file for Minecraft %s",
+	"cf.no_hash":                  "%s declares no SHA-1, so this download cannot be checked",
+	"cf.deps":                     "the file requires %d other project(s) (ids %s); mcli never installs dependencies silently",
 	// ---------------------------------------------------------------- mod loaders (a choice)
 	"loader.bad":             "unknown loader %q; the choices are %s",
 	"loader.needs_game":      "a mod loader needs a game version to attach to",

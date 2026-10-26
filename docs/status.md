@@ -85,6 +85,22 @@ and what is left. Update it in the same commit as the work.
   outright (`mcserver.AcceptEula`), in `server set --eula` and in `server create
   --eula` (where an existing refusal would have survived the same way). The claim was
   checked against the file, not against the message; the tests pin it.
+* CurseForge is wired for `search` and `add` (`--source curseforge`). Verified here: no
+  key means the exact instruction and no request; a wrong key makes a live call to
+  api.curseforge.com and comes back `HTTP 403`, which the CLI reports as "the key was
+  rejected" plus the command that shows its length; the key itself never appears in
+  output (checked by grepping for it). Pinned by tests: the request (x-api-key,
+  gameId=432, classId, gameVersion, modLoaderType, paging), the parsing, hash
+  selection (algo 1 is SHA-1), the "newest release for this game version, then beta,
+  then alpha" file rule, and the sentinel errors.
+* Not verified: a working key. Nobody has run a real CurseForge search or install
+  here, so the success path — an actual file list and a download from
+  media.forgecdn.net — is untested. Think of it as "the shape is right, the last step
+  has never been seen".
+* The API key is a credential, so `config get`/`config list` report its length and
+  whether it is set, never its value. That is a rule in `config.Secret`, not a habit:
+  `mcli.toml` holds the key in plain text, and every path that prints configuration
+  goes through the same masking.
 * Servers are in `doctor` and `repair`. `doctor <server>` checks the jar against the
   checksum the version publishes, `eula.txt`, `server.properties` (and whether another
   mcli server claims the same port), the Java the version needs, a recorded pid that is

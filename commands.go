@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Kailoinf/MCL-CLI/internal/auth"
+	"github.com/Kailoinf/MCL-CLI/internal/config"
 	"github.com/Kailoinf/MCL-CLI/internal/i18n"
 	"github.com/Kailoinf/MCL-CLI/internal/java"
 	"github.com/Kailoinf/MCL-CLI/internal/launch"
@@ -447,7 +448,7 @@ func (a *App) cmdConfig(args []string) int {
 		if err != nil {
 			return a.fatal(err)
 		}
-		a.Log.Printf("%s", i18n.T("cfg.current", rest[0], value))
+		a.Log.Printf("%s", i18n.T("cfg.current", rest[0], configValueForDisplay(rest[0], value)))
 		return 0
 	case "set":
 		if len(rest) < 2 {
@@ -461,7 +462,7 @@ func (a *App) cmdConfig(args []string) int {
 			return a.fatal(err)
 		}
 		value, _ := a.Store.Cfg().Get(rest[0])
-		a.Log.Printf("%s", i18n.T("cfg.set_ok", rest[0], value))
+		a.Log.Printf("%s", i18n.T("cfg.set_ok", rest[0], configValueForDisplay(rest[0], value)))
 		return 0
 	case "unset":
 		if len(rest) == 0 {
@@ -486,7 +487,7 @@ func (a *App) configList() int {
 	a.Log.Printf("%s", i18n.T("cfg.list_header", "KEY", "VALUE", "DESCRIPTION"))
 	rows := a.Store.Cfg().Rows()
 	for _, r := range rows {
-		v := r[1]
+		v := configValueForDisplay(r[0], r[1])
 		if v == "" {
 			v = i18n.T("common.none")
 		}
@@ -680,4 +681,16 @@ func (a *App) autoCreateInstance(name string) (*store.Instance, error) {
 	}
 	a.Log.Printf("%s", i18n.T("launch.auto_create", version, version))
 	return inst, nil
+}
+
+// configValueForDisplay keeps credentials out of the terminal: a key that is a
+// secret reports whether it is set and how long it is, and nothing more.
+func configValueForDisplay(key, value string) string {
+	if !config.Secret(key) {
+		return value
+	}
+	if value == "" {
+		return i18n.T("cfg.secret_unset")
+	}
+	return i18n.T("cfg.secret_set", len(value))
 }

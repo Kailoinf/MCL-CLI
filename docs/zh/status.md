@@ -86,6 +86,15 @@
   是 `WriteFiles`，而那个函数只创建缺失的文件。现在接受协议是直接覆盖写文件（`mcserver.AcceptEula`），
   `server set --eula` 与 `server create --eula` 都是如此（后者同样会遇到「既有的 false 被保留」问题）。
   这条结论是对着文件核实的，不是对着输出核实的；测试把它钉住了。
+* CurseForge 已经接上 `search` 与 `add`（`--source curseforge`）。这里验证过的：没有 key 时给出
+  确切的指令且不发请求；错误的 key 会真去请求 api.curseforge.com 并拿回 `HTTP 403`，CLI 会把它报成
+  「key 被拒绝」并附上查看长度的命令；key 本身从不出现在输出里（用 grep 逐个核对过）。被测试钉住的：
+  请求形状（x-api-key、gameId=432、classId、gameVersion、modLoaderType、分页）、解析、摘要选择
+  （algo 1 才是 SHA-1）、「该游戏版本最新的正式版，其次 beta，再次 alpha」的选文件规则，以及几个哨兵错误。
+* 未验证的：能用的 key。这里没有用真 key 跑过任何一次 CurseForge 搜索或安装，所以成功路径 —— 真的拿到
+  文件列表、真的从 media.forgecdn.net 下载 —— 是没跑过的。可以理解为「形状是对的，最后一步没人见过」。
+* API key 属于凭证，因此 `config get`/`config list` 只报告长度与是否已设置，永不显示值。这是
+  `config.Secret` 里的规则而不是习惯问题：`mcli.toml` 里是明文，所有会打印配置的路径都走同一套遮蔽。
 * 服务端也进了 `doctor` 与 `repair`。`doctor <服务端>` 会检查：jar 与版本发布的校验和是否一致、
   `eula.txt`、`server.properties`（以及是否与另一个 mcli 服务端配置了同一端口）、该版本需要的 Java、
   记录里那个已经不在运行的 pid、以及最近一次日志的结尾。逐条实测过：jar 被移走时会报出缺失与期望大小

@@ -48,8 +48,8 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 
 | Command | What it does |
 | --- | --- |
-| `mcli search <query> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <game>] [--loader <loader>] [--limit N] [--offset N]` | search Modrinth: one query, one page |
-| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--type <t>] [--dry-run]` | install a project's matching file into an instance; `modpack` is detected from the project and installed as a whole pack (file list, overrides, loader) |
+| `mcli search <query> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <game>] [--loader <loader>] [--limit N] [--offset N] [--source modrinth\|curseforge]` | search a catalogue: one query, one page. CurseForge requires an API key of your own (`config set curseforge_api_key`) |
+| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--type <t>] [--source modrinth\|curseforge] [--dry-run]` | install a project's matching file into an instance; `modpack` is detected from the project and installed as a whole pack (file list, overrides, loader) |
 | `mcli mods [<instance>]` | list what an instance has in `mods/`, `resourcepacks/`, `shaderpacks/`, `datapacks/` |
 
 ## Java and configuration
@@ -57,5 +57,5 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 | Command | What it does |
 | --- | --- |
 | `mcli java [list \| install <major> [--force] \| which <version>]` | inspect or install Java runtimes |
-| `mcli config [get\|set\|unset\|list\|path]` | read or change settings in `mcli.toml` |
+| `mcli config [get\|set\|unset\|list\|path]` | read or change settings in `mcli.toml`; a key that is a credential (`curseforge_api_key`) is reported as a length, never as a value |
 | `mcli version`, `mcli help [command]` | version and help |

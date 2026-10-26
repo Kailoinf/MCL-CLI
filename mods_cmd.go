@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Kailoinf/MCL-CLI/internal/curseforge"
 	"github.com/Kailoinf/MCL-CLI/internal/dl"
 	"github.com/Kailoinf/MCL-CLI/internal/i18n"
 	"github.com/Kailoinf/MCL-CLI/internal/mirror"
@@ -30,6 +32,7 @@ func (a *App) cmdSearch(args []string) int {
 		"loader":  {takesValue: true},
 		"limit":   {takesValue: true},
 		"offset":  {takesValue: true},
+		"source":  {takesValue: true},
 	})
 	if err != nil {
 		return a.fatal(err)
@@ -41,6 +44,13 @@ func (a *App) cmdSearch(args []string) int {
 	query := strings.Join(f.args, " ")
 	if strings.TrimSpace(query) == "" {
 		return a.usageError("cli.missing_arg", "search", "<query>")
+	}
+	source := strings.ToLower(strings.TrimSpace(f.str("source", "modrinth")))
+	if source == "" {
+		source = "modrinth"
+	}
+	if source != "modrinth" && source != "curseforge" {
+		return a.usageError("mod.bad_source", f.str("source", ""), "modrinth|curseforge")
 	}
 	o := modrinth.SearchOptions{
 		Type:        f.str("type", ""),
@@ -66,6 +76,9 @@ func (a *App) cmdSearch(args []string) int {
 		}
 	}
 
+	if source == "curseforge" {
+		return a.searchCurseForge(query, o)
+	}
 	res, err := modrinth.Search(a.Policy(), query, o)
 	if err != nil {
 		return a.fatal(fmt.Errorf("%s", i18n.T("mod.search_failed", query, err)))
@@ -91,6 +104,7 @@ func (a *App) cmdSearch(args []string) int {
 // cmdAdd installs the file of one project into an instance.
 func (a *App) cmdAdd(args []string) int {
 	f, err := parseFlags("add", args, map[string]flagSpec{
+		"source":       {takesValue: true},
 		"instance":     {takesValue: true},
 		"version":      {takesValue: true},
 		"loader":       {takesValue: true},
@@ -124,6 +138,21 @@ func (a *App) cmdAdd(args []string) int {
 		return a.fatal(err)
 	}
 	gameVersion, inferredLoader := spec.Game, spec.Loader
+
+	// --- which source? ---------------------------------------------------
+	source := strings.ToLower(strings.TrimSpace(f.str("source", "modrinth")))
+	if source == "" {
+		source = "modrinth"
+	}
+	switch source {
+	case "modrinth":
+	case "curseforge":
+		// A different catalogue with the same destination directories: everything a
+		// CurseForge project needs is its file list, which is fetched by id.
+		return a.addCurseForge(inst, project, spec, f.str("type", ""), f.boolean("dry-run"))
+	default:
+		return a.usageError("mod.bad_source", f.str("source", ""), "modrinth|curseforge")
+	}
 
 	// --- what is this project, and which file fits? ----------------------
 	meta, err := modrinth.ProjectInfo(a.Policy(), project)
@@ -704,4 +733,179 @@ func (a *App) fetchTemp(file modrinth.File) (string, func(), error) {
 		return "", func() {}, err
 	}
 	return path, func() { os.Remove(path) }, nil
+}
+
+// curseforgeClient builds a client around the key in the configuration, or explains
+// what to do when there is none: CurseForge needs an API key belonging to the person
+// using it, which is the one thing Modrinth does not.
+func (a *App) curseforgeClient() (curseforge.Client, error) {
+	key := strings.TrimSpace(a.Store.Cfg().CurseForgeKey)
+	if key == "" {
+		return curseforge.Client{}, fmt.Errorf("%s", i18n.T("cf.no_key"))
+	}
+	return curseforge.Client{Key: key, Policy: a.Policy()}, nil
+}
+
+// searchCurseForge prints one page of CurseForge results in the same shape as the
+// Modrinth table, so the two sources read the same way.
+func (a *App) searchCurseForge(query string, o modrinth.SearchOptions) int {
+	client, err := a.curseforgeClient()
+	if err != nil {
+		return a.fatal(err)
+	}
+	q := curseforge.SearchQuery{Text: query, GameVersion: o.GameVersion, Index: o.Offset, PageSize: o.Limit}
+	if o.Type != "" {
+		classID, ok := curseforge.ClassID(o.Type)
+		if !ok {
+			return a.usageError("mod.bad_type", o.Type)
+		}
+		q.ClassID = classID
+	}
+	if o.Loader != "" {
+		if id, ok := curseforge.LoaderID(o.Loader); ok {
+			q.LoaderID = id
+		}
+	}
+	page, err := client.Search(q)
+	if err != nil {
+		return a.fatal(a.curseforgeError(query, err))
+	}
+	if len(page.Data) == 0 {
+		a.Log.Printf("%s", i18n.T("mod.no_hits", query))
+		return 0
+	}
+	a.Log.Printf("%s", i18n.T("mod.search_header",
+		padRight("SLUG", 24), padRight("TYPE", 13), padRight("DOWNLOADS", 11),
+		padRight("AUTHOR", 16), "TITLE"))
+	for _, m := range page.Data {
+		kind, _ := curseforge.DirFor(m.ClassID)
+		if kind == "" {
+			kind = "-"
+		}
+		a.Log.Printf("%s", i18n.T("mod.search_row",
+			padRight(m.Slug, 24), padRight(kind, 13),
+			padRight(humanInt(m.DownloadCount), 11), padRight(trim(m.AuthorLine(), 15), 16),
+			trim(m.Name, 40)))
+	}
+	a.Log.Printf("%s", i18n.T("mod.search_footer", len(page.Data), page.Pagination.TotalCount,
+		gameHint(o), offsetHint(o, len(page.Data), page.Pagination.TotalCount)))
+	return 0
+}
+
+// curseforgeError turns the client's sentinels into something a person can act on.
+func (a *App) curseforgeError(query string, err error) error {
+	switch {
+	case errors.Is(err, curseforge.ErrNoKey):
+		return fmt.Errorf("%s", i18n.T("cf.no_key"))
+	case errors.Is(err, curseforge.ErrKeyRejected):
+		return fmt.Errorf("%s", i18n.T("cf.bad_key"))
+	default:
+		return fmt.Errorf("%s", i18n.T("mod.search_failed", query, err))
+	}
+}
+
+// addCurseForge installs one CurseForge project into an instance. The steps are the
+// same as the Modrinth path — find the project, choose the file that fits, download
+// it with the digest the source declares, put it where its type belongs — and the
+// same refusals apply: a mod into a vanilla instance is not silently dropped in.
+func (a *App) addCurseForge(inst *store.Instance, project string, spec instanceSpec, typeFlag string, dryRun bool) int {
+	client, err := a.curseforgeClient()
+	if err != nil {
+		return a.fatal(err)
+	}
+	classID := 0
+	if typeFlag != "" {
+		id, ok := curseforge.ClassID(typeFlag)
+		if !ok {
+			return a.usageError("mod.bad_type", typeFlag)
+		}
+		classID = id
+	}
+	mod, found, err := client.Find(project, classID)
+	if err != nil {
+		return a.fatal(a.curseforgeError(project, err))
+	}
+	if !found {
+		return a.fatal(fmt.Errorf("%s", i18n.T("cf.not_found", project)))
+	}
+	dir, ok := curseforge.DirFor(mod.ClassID)
+	if !ok {
+		return a.fatal(fmt.Errorf("%s", i18n.T("cf.type_unsupported", mod.Name, mod.ClassID)))
+	}
+	if dir == "mods" && spec.Loader == "" {
+		// Same rule as Modrinth: a mod needs a loader, and guessing one is how people
+		// end up with a Forge jar in a Fabric instance.
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.needs_loader", mod.Name, spec.Game, spec.Game)))
+	}
+	files, err := client.Files(mod.ID)
+	if err != nil {
+		return a.fatal(a.curseforgeError(project, err))
+	}
+	loader := loaderDisplayName(spec.Loader) // the API spells them Fabric/Forge/NeoForge
+	file, ok := curseforge.PickFile(files, spec.Game, loader)
+	if !ok {
+		return a.fatal(fmt.Errorf("%s", i18n.T("cf.no_file", mod.Name, spec.Game)))
+	}
+	dest := filepath.Join(a.instanceDir(inst.Name), dir, file.FileName)
+	item := dl.Item{
+		Candidates: []mirror.Candidate{{URL: file.DownloadURL, Source: "curseforge"}},
+		Dest:       dest,
+		SHA1:       file.SHA1(),
+		Size:       file.FileLength,
+		Desc:       file.FileName,
+	}
+	a.Log.Printf("%s", i18n.T("mod.picked", mod.Name, file.DisplayName))
+	if spec.Loader != "" {
+		a.Log.Infof("%s", i18n.T("mod.loader_implied", spec.Loader))
+	}
+	a.Log.Printf("%s", i18n.T("mod.target", inst.Name, dir, dest))
+	if file.SHA1() == "" {
+		a.Log.Warnf("%s", i18n.T("cf.no_hash", file.FileName))
+	}
+	if dryRun {
+		a.Log.Printf("%s", i18n.T("mcv.dry_run"))
+		return 0
+	}
+	if !a.Yeseverything {
+		ok, err := a.confirmFile(file.FileName, file.FileLength)
+		if err != nil {
+			return a.fatal(err)
+		}
+		if !ok {
+			return a.fatal(fmt.Errorf("%s", i18n.T("dl.declined", file.FileName)))
+		}
+	}
+	if err := dl.FetchAll(a.Policy(), []dl.Item{item}, 1, a.Log); err != nil {
+		return a.fatal(err)
+	}
+	a.Log.Printf("%s", i18n.T("mod.installed", file.FileName, inst.Name, dir))
+	if deps := file.RequiredDependencies(); len(deps) > 0 {
+		a.Log.Printf("%s", i18n.T("cf.deps", len(deps), joinInts(deps)))
+	}
+	return 0
+}
+
+// loaderDisplayName is how CurseForge writes a loader in a file's game versions.
+func loaderDisplayName(loader string) string {
+	switch strings.ToLower(loader) {
+	case "forge":
+		return "Forge"
+	case "fabric":
+		return "Fabric"
+	case "quilt":
+		return "Quilt"
+	case "neoforge":
+		return "NeoForge"
+	}
+	return loader
+}
+
+// joinInts renders a short id list, for a message that can only name what CurseForge
+// gives: project ids, not slugs.
+func joinInts(values []int) string {
+	parts := make([]string, 0, len(values))
+	for _, v := range values {
+		parts = append(parts, fmt.Sprintf("%d", v))
+	}
+	return strings.Join(parts, ", ")
 }
