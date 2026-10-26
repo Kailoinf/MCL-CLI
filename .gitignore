@@ -1,0 +1,17 @@
+# build output
+/mcli
+/mcli.exe
+/dist/
+/bin/
+
+# runtime data (never commit)
+.mcl-cli/
+.minecraft/
+mcli.db
+mcli.db.tmp
+*.log
+logs/
+
+# scratch
+/tmp/
+/scratch/
