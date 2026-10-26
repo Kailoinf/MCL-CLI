@@ -145,3 +145,17 @@ an instance already on the target is only checked for completeness.
 that a path with a space is quoted — with `launch.Options.PathSeparator` set
 explicitly, so it runs anywhere. `./scripts/check-cross.sh` proves every target still
 compiles; behaviour on Windows itself is not verified and `docs/status.md` says so.
+
+## Checking for leftovers after a server test
+
+`pgrep -f 'mcli server start'` matches the shell command that runs it, so it always
+reports a hit — use the exact process name instead:
+
+```sh
+pgrep -x java; pgrep -x mcli        # empty means clean
+for p in $(pgrep -x java); do tr '\0' ' ' < /proc/$p/cmdline; echo; done
+```
+
+A foreground run is deliberately not listed by `server list` as running (it belongs to
+the terminal that started it), so `server cmd` from another terminal says
+"not running" — that is expected, not a bug.
