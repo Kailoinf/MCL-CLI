@@ -88,6 +88,8 @@ func run(argv []string) int {
 		return app.cmdMods(args)
 	case "doctor":
 		return app.cmdDoctor(args)
+	case "update":
+		return app.cmdUpdate(args)
 	case "repair", "fix":
 		return app.cmdRepair(args)
 	default:
@@ -119,6 +121,7 @@ func printHelp(app *App, topic string) {
 		{"mods", "cli.cmd.mods.usage", "cli.cmd.mods.desc"},
 		{"doctor", "cli.cmd.doctor.usage", "cli.cmd.doctor.desc"},
 		{"repair", "cli.cmd.repair.usage", "cli.cmd.repair.desc"},
+		{"update", "cli.cmd.update.usage", "cli.cmd.update.desc"},
 		{"delete", "cli.cmd.delete.usage", "cli.cmd.delete.desc"},
 		{"launch", "cli.cmd.launch.usage", "cli.cmd.launch.desc"},
 		{"refresh", "cli.cmd.refresh.usage", "cli.cmd.refresh.desc"},

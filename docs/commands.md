@@ -20,6 +20,7 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 | `mcli launch <name>\|<version>\|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
 | `mcli instance [list \| show <name> \| set <name> [--loader vanilla\|fabric] [--loader-version <v>] … \| copy <src> <dst> [--with-files] \| rename <old> <new> \| scan [--all] \| import <version> [--as <name>]]` | inspect and change instances, adopt existing installs |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance |
+| `mcli update [<instance>] [--version <v>] [--loader vanilla\|fabric] [--loader-version <v>] [--dry-run] [--force]` | move an instance to another game version (newest release by default), keeping its loader, its settings and its files |
 | `mcli doctor [<name>] [--all] [--deep]` | health check; exits 1 when something is wrong |
 | `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the missing or damaged files |
 | `mcli refresh [--versions] [--all]` | force-refresh cached metadata |

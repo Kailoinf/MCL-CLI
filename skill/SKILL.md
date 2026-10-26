@@ -86,7 +86,7 @@ instance set), `fabric_cmd.go` + `internal/fabric` (discovery: the loader builds
 `meta.fabricmc.net` publishes), `mods_cmd.go` + `internal/modrinth` (search and
 install content),
 `internal/mrpack` (reading a `.mrpack`: the file list, the loader it wants, the
-overrides it ships),
+overrides it ships), `update_cmd.go` (moving an instance to another game version),
 `launch_cmd.go`
 (launch + java selection + the per-run `--server`/`--fullscreen`/`--demo`
 switches), `app.go` (shared
@@ -252,6 +252,19 @@ Content from Modrinth, verified against the live API:
 ./mcli add sodium --instance <vanilla instance>           # must refuse and name --loader fabric
 ```
 
+Moving an instance (verified: 189 files / 97.7 MiB into a version that was not on
+the box, and `1.8.9 → 26.3`):
+
+```sh
+./mcli update <instance> --version 1.21.4 --yes    # fetch and repoint
+./mcli update <instance> --dry-run                 # plan only
+./mcli update <fabric instance> --dry-run          # keeps the loader: builds a profile for the new game version
+./mcli update <not-instance>                       # must refuse
+```
+
+The old version keeps its files — another instance may run them — and an instance
+already on the target is only checked for completeness.
+
 A modpack, verified with a real one (`fabulously-optimized`, 48 files, 41.9 MB,
 fabric-loader 0.19.5 on 26.3):
 
@@ -324,5 +337,7 @@ installation are done (`mcli server create/list/show/set/delete/start/stop/attac
 done as well: `mcli search`/`add`/`mods` against Modrinth (no API key needed), and
 `add <pack>` installs a `.mrpack` — its file list, its overrides and the loader it
 was built for — after checking the pack's game version against the instance. What
-is left: CurseForge (per-user API key), CurseForge-format packs, updating an
-instance to a newer pack version, and `mcli update <instance>` for the game.
+is left: CurseForge (per-user API key), CurseForge-format packs, and updating *a
+pack* inside an instance. Game versions move with `mcli update <instance>` (newest
+release by default, loader kept, plan-only with `--dry-run`); the version an
+instance leaves behind keeps its files.

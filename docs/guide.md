@@ -137,3 +137,17 @@ say what does not fit:
 * The pack's `overrides/` are copied in, but never over a file that already exists:
   a world or a config someone tuned by hand is not something a pack gets to
   overwrite. What was kept is reported.
+
+## Moving an instance to another version
+
+```sh
+mcli update modded                       # to the newest release, keeping its loader
+mcli update modded --version 1.21.4      # or a version you name
+mcli update modded --dry-run             # what it would fetch, and nothing else
+```
+
+Everything that is not the game version stays where it is: the game directory, the
+memory, the arguments, the mods, the worlds. An instance with a loader stays with
+that loader — the new version is built as a profile for it — and the previous
+version's files are left alone, because another instance may well be running them.
+An instance already on the newest release is simply checked for completeness.

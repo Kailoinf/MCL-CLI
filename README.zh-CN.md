@@ -94,6 +94,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli server attach <名称> [--lines N]` | 接上后台服务器的控制台，可直接输入命令（Ctrl+C 只是离开，服务器继续跑） |
 | `mcli server cmd <名称> <命令…>` | 往运行中的服务器控制台发一条命令 |
 | `mcli server stop <名称> [--force]` | 让后台运行的服务器退出：发送 SIGINT（等同 Ctrl+C），因此存档会被保存 |
+| `mcli update [<名称>] [--version <版本>] [--loader vanilla\|fabric] [--dry-run]` | 把实例换到另一个游戏版本，保留它的加载器、设置与全部文件 |
 | `mcli doctor [<名称>] [--all] [--deep]` | 体检：本机环境（目录、Java、版本清单、日志）＋实例需要的每个文件；有问题时退出码 1 |
 | `mcli repair <名称> [--deep] [--force] [--dry-run]` | 只补齐 doctor 查出的缺失/损坏文件（--force 则按清单全部重下） |
 | `mcli delete <名称> [--keep-files] [--yes]` | 删除实例（连同存档） |

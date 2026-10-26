@@ -86,7 +86,8 @@ func (a *App) applyLoader(gameVersion string, loader modLoader, loaderVersion st
 }
 
 // baseGameVersion returns the game version a version id ultimately runs: a modded
-// profile inherits from it. `instance set --loader vanilla` uses this to go back.
+// profile inherits from it, or was built for it when another launcher wrote the
+// profile. `instance set --loader vanilla` uses this to go back.
 func (a *App) baseGameVersion(versionID string) (string, error) {
 	if versionID == "" {
 		return "", nil
@@ -95,11 +96,7 @@ func (a *App) baseGameVersion(versionID string) (string, error) {
 	if err != nil {
 		return versionID, err
 	}
-	eff := v.Effective()
-	if eff.InheritsFrom != "" {
-		return eff.InheritsFrom, nil
-	}
-	return eff.ID, nil
+	return v.GameVersion(), nil
 }
 
 // loaderOfVersionID reports the loader a version id belongs to, so `instance show`

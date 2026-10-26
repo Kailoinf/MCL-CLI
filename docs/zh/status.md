@@ -79,6 +79,16 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* `mcli update` 把实例换到另一个游戏版本，三种情况都实测过：
+  `update modtest --version 1.21.4` 取回 189 个文件 / 97.7 MiB（这台机器上原本根本没有这个
+  版本 —— 客户端 jar、库、natives、资源）并把实例指过去；`update legacy --version 26.3` 把
+  一个 1.8.9 的实例移走，并报告 `1.8.9 → 26.3`；一个 Fabric 实例更新到 26.3 时，是为新游戏
+  版本构建加载器 profile，而不是丢掉加载器。不带 `--version` 的 `update` 表示最新正式版；
+  已经是最新的实例只做完整性检查（`26.3 已经装好且完整`），而它离开的那个版本保留自己的文件，
+  因为很可能还有别的实例在跑。
+* `instance set --loader vanilla` 对别的启动器写出的 profile 曾经回答「未给出任何选项」：
+  它靠 id 的拼写来判断实例有没有加载器。现在它去问版本 JSON —— 和上面整合包那个 bug 是同一
+  个修法 —— 而「给了选项但没有需要修改的内容」也单独成句，不再打印整段用法。
 * 整合包安装，用真实的整合包验证过：把 `add fabulously-optimized` 装进一个**别的启动器建的**实例，
   工具取回 `.mrpack`（173,859 字节），读出索引（48 个文件、41.9 MB、`fabric-loader 0.19.5`
   + `minecraft 26.3`）并完成安装 —— 45 个 jar 进 `mods/`、3 个 zip 进 `resourcepacks/`、
@@ -266,8 +276,8 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 1. **CurseForge**：Modrinth 不需要 key，已经接上；CurseForge 每个用户都要 API key，因此
    需要一个配置项和一条「缺 key」的报错路径。尚未开始。
 2. **CurseForge 整合包与整合包更新**：`.mrpack` 已经能装；以 CurseForge zip 形式发布的
-   整合包、以及把实例升到更新的整合包版本都没做。面向*游戏本体*的 `mcli update <实例>`
-   也还没有 —— `doctor`/`repair` 只负责让已安装的版本完整。
+   整合包、以及把实例升到更新的整合包版本都没做。（换*游戏版本*现在是 `mcli update`；
+   那边还缺的是更新实例里的整合包。）
 
 
 ## 约定（AGENTS.md 故意没写的细节）

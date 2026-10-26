@@ -308,14 +308,21 @@ func (a *App) instanceSet(args []string) int {
 		if err != nil {
 			return a.usageError("loader.bad", f.str("loader", ""), loaderChoices())
 		}
-		target, err := a.ensureLoaderTarget(versionRef{id: inst.Version}, loader, f.str("loader-version", ""))
+		// Whether the instance is modded is asked of the version JSON, not of the
+		// way its id is spelled: a profile another launcher wrote is named its own
+		// way and still runs a loader.
+		spec, err := a.instanceSpecOf(inst, "", "")
+		if err != nil {
+			return a.fatal(err)
+		}
+		target, err := a.ensureLoaderTarget(versionRef{id: inst.Version, game: spec.Game}, loader, f.str("loader-version", ""))
 		if err != nil {
 			return a.fatal(err)
 		}
 		if target != "" {
 			inst.Version = target
 			changed = append(changed, "version="+target)
-		} else if loader == loaderVanilla && loaderOfVersionID(inst.Version) != loaderVanilla {
+		} else if loader == loaderVanilla && spec.Loader != "" {
 			// ensureLoaderTarget returned the game version it inherits
 			game, err := a.baseGameVersion(inst.Version)
 			if err != nil {
@@ -377,8 +384,15 @@ func (a *App) instanceSet(args []string) int {
 	}
 
 	if len(changed) == 0 {
-		a.Log.Printf("%s", i18n.T("inst.set_nothing"))
-		a.Log.Printf("%s", i18n.T("inst.set_usage"))
+		// Two different situations, told apart on purpose: no options at all (show
+		// the usage) versus options that add up to no change (do not pretend the
+		// command was mistyped).
+		if f.any() {
+			a.Log.Printf("%s", i18n.T("inst.set_same", name))
+		} else {
+			a.Log.Printf("%s", i18n.T("inst.set_nothing"))
+			a.Log.Printf("%s", i18n.T("inst.set_usage"))
+		}
 		return 0
 	}
 	if err := a.Store.Save(); err != nil {

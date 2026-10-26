@@ -97,6 +97,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli server attach <name> [--lines N]` | follow a detached server's console and type into it (Ctrl+C leaves the server running) |
 | `mcli server cmd <name> <command…>` | send one command into a running server's console |
 | `mcli server stop <name> [--force]` | ask a detached server to stop: it gets SIGINT, exactly what Ctrl+C would send, so the world is saved |
+| `mcli update [<name>] [--version <v>] [--loader vanilla\|fabric] [--dry-run]` | move an instance to another game version, keeping its loader, its settings and its files |
 | `mcli doctor [<name>] [--all] [--deep]` | health check: the machine (home, java, manifest, log) and every file an instance needs; exit 1 when something is wrong |
 | `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the files doctor found missing or damaged (`--force` re-downloads everything planned) |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance (and its saves) |

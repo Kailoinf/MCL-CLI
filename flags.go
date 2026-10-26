@@ -30,6 +30,12 @@ func newFlags() *flags {
 	}
 }
 
+// any reports whether any option at all was given. It separates "you passed nothing"
+// from "what you passed adds up to no change" — two different things to tell a person.
+func (f *flags) any() bool {
+	return len(f.values)+len(f.lists)+len(f.bools) > 0
+}
+
 func (f *flags) has(name string) bool {
 	if f.bools[name] {
 		return true

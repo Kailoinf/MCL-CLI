@@ -75,6 +75,20 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* `mcli update` moves an instance to another game version and was verified three
+  ways: `update modtest --version 1.21.4` fetched 189 files / 97.7 MiB (a version
+  that was not on this box at all — client jar, libraries, natives, assets) and
+  repointed the instance; `update legacy --version 26.3` moved a 1.8.9 instance and
+  reported `1.8.9 → 26.3`; and a Fabric instance moved to 26.3 by building the
+  loader profile for the new game version rather than dropping the loader. `update`
+  with no `--version` means the newest release; an instance already on it is only
+  checked for completeness (`26.3 is already installed and complete`), and the
+  version it left behind keeps its files, since another instance may run them.
+* `instance set --loader vanilla` used to answer "no options given" on a profile
+  another launcher wrote: it decided whether the instance was modded by looking at
+  how the id was spelled. It now asks the version JSON, which is the same fix as
+  the pack bug above, and the message for "options given, nothing to change" is its
+  own line instead of the usage dump.
 * Modpack installation, verified against a real pack: `add fabulously-optimized`
   into an instance another launcher made fetched the `.mrpack` (173,859 bytes), read
   its index (48 files, 41.9 MB, `fabric-loader 0.19.5` + `minecraft 26.3`) and
@@ -297,8 +311,8 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
    per user, so it would need a config key and a key-shaped error path. Not started.
 2. **CurseForge packs and pack updates**: `.mrpack` packs install; a pack that
    ships as a CurseForge zip, and updating an instance to a newer pack version,
-   are not implemented. `mcli update <instance>` for the *game* is still missing
-   too — `doctor`/`repair` only make an installed version whole.
+   are not implemented. (Updating the *game* version is `mcli update` now; what is
+   still missing there is updating a pack inside an instance.)
 
 ## Conventions (detail AGENTS.md deliberately leaves out)
 

@@ -23,6 +23,8 @@ features:
     details: "Named instances with their own game directory, memory and arguments. Adopt what another launcher already installed — PCL, HMCL, the official one — without re-downloading a gigabyte."
   - title: Several accounts
     details: "Microsoft login through the browser flow or the device flow. Refresh tokens and session tokens live in two separately encrypted files, and `account list` shows who is logged in."
+  - title: Updating
+    details: "`mcli update` moves an instance to a newer game version — the newest release by default — while keeping its loader, its memory, its arguments, its mods and its worlds. The version it left behind keeps its files: another instance may be running them."
   - title: Doctor and repair
     details: "`mcli doctor` says what is missing or damaged and exits non-zero when something is wrong; `mcli repair` fetches exactly that list and nothing else."
   - title: Servers
