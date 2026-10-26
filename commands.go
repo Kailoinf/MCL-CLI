@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kailoinf/MCL-CLI/internal/auth"
 	"github.com/Kailoinf/MCL-CLI/internal/i18n"
 	"github.com/Kailoinf/MCL-CLI/internal/java"
 	"github.com/Kailoinf/MCL-CLI/internal/launch"
@@ -21,9 +22,11 @@ import (
 
 func (a *App) cmdLogin(args []string) int {
 	f, err := parseFlags("login", args, map[string]flagSpec{
-		"label":   {takesValue: true},
-		"force":   {},
-		"timeout": {takesValue: true},
+		"label":      {takesValue: true},
+		"force":      {},
+		"timeout":    {takesValue: true},
+		"flow":       {takesValue: true},
+		"no-browser": {},
 	})
 	if err != nil {
 		return a.fatal(err)
@@ -32,18 +35,36 @@ func (a *App) cmdLogin(args []string) int {
 		a.Log.Printf("%s", i18n.T("cli.cmd.login.usage"))
 		return 0
 	}
-	client := a.AuthClient(0)
-	dev, err := client.RequestDeviceCode()
-	if err != nil {
-		return a.fatal(err)
-	}
-	a.Log.Printf("%s", i18n.T("auth.device_code", dev.VerificationURI, dev.UserCode))
-	a.Log.Printf("%s", i18n.T("auth.scopes", authScopeString()))
 	timeoutSec, err := f.int("timeout", 0)
 	if err != nil {
 		return a.fatal(err)
 	}
-	ms, err := client.WaitForToken(dev, time.Duration(timeoutSec)*time.Second)
+	client := a.AuthClient(0)
+
+	// Two flows, because different OAuth client ids support different ones:
+	// the default id works with the browser (authorization code + loopback)
+	// flow, while a device-code capable id can be used with --flow device.
+	var ms *auth.MSTokens
+	switch strings.ToLower(f.str("flow", "browser")) {
+	case "browser", "web":
+		client.UseBrowserFlow()
+		ms, err = client.BrowserLogin(time.Duration(timeoutSec)*time.Second, func(u string) {
+			a.Log.Printf("%s", i18n.T("auth.browser_url", u))
+			if !f.boolean("no-browser") {
+				auth.OpenBrowser(u, a.Log)
+			}
+		})
+	case "device":
+		dev, derr := client.RequestDeviceCode()
+		if derr != nil {
+			return a.fatal(derr)
+		}
+		a.Log.Printf("%s", i18n.T("auth.device_code", dev.VerificationURI, dev.UserCode))
+		a.Log.Printf("%s", i18n.T("auth.scopes", authScopeString()))
+		ms, err = client.WaitForToken(dev, time.Duration(timeoutSec)*time.Second)
+	default:
+		return a.usageError("cli.bad_flag_value", "--flow", f.str("flow", ""))
+	}
 	if err != nil {
 		return a.fatal(err)
 	}
@@ -404,7 +425,9 @@ func (a *App) cmdConfig(args []string) int {
 	case "list", "ls", "--list":
 		return a.configList()
 	case "path", "--path":
-		a.Log.Printf("%s", a.DB.Path)
+		a.Log.Printf("%s", i18n.T("cli.config_path", a.DB.Path))
+		a.Log.Printf("%s", i18n.T("cli.state_path", a.DB.StatePath))
+		a.Log.Printf("%s", i18n.T("cli.last_path", a.DB.LastPath))
 		return 0
 	case "get":
 		if len(rest) == 0 {
@@ -423,7 +446,8 @@ func (a *App) cmdConfig(args []string) int {
 		if err := a.DB.Cfg().Set(rest[0], strings.Join(rest[1:], " ")); err != nil {
 			return a.fatal(err)
 		}
-		if err := a.DB.Save(); err != nil {
+		// patch mcli.toml in place so comments and unrelated keys survive
+		if err := a.DB.SaveConfigValue(rest[0]); err != nil {
 			return a.fatal(err)
 		}
 		value, _ := a.DB.Cfg().Get(rest[0])
@@ -437,7 +461,7 @@ func (a *App) cmdConfig(args []string) int {
 		if err != nil {
 			return a.fatal(err)
 		}
-		if err := a.DB.Save(); err != nil {
+		if err := a.DB.SaveConfigValue(rest[0]); err != nil {
 			return a.fatal(err)
 		}
 		a.Log.Printf("%s", i18n.T("cfg.unset_ok", rest[0], value))

@@ -11,15 +11,17 @@ app.go             shared context: paths, db, logger, confirm, auth helpers
 commands.go        login/logout/list/create/delete/refresh/config/java
 launch_cmd.go      launch command + java selection + placeholder drift check
 internal/i18n      every user-visible string (en + zh catalogs)
-internal/paths     ~/.mcl-cli layout
-internal/config    the config table inside mcli.db (keys + defaults + validation)
-internal/store     mcli.db: config, accounts, instances, manifest cache
-internal/secret    AES-GCM token encryption, PBKDF2 from machine identity
+internal/paths     ~/.mcl-cli layout (three TOML files, cache, jdk, logs)
+internal/toml      dependency-free TOML writer/reader + comment-preserving edits
+internal/config    the config table inside mcli.toml (keys + defaults + validation)
+internal/store     mcli.toml + state.toml + last.toml (config, accounts, instances, previous launch)
+internal/secret    AES-GCM token encryption, PBKDF2 from machine identity + per-account salt
 internal/logx      leveled terminal + file logging
 internal/mirror    official URL -> ordered BMCLAPI/official candidate list
 internal/dl        downloader: retries, stall watchdog, SHA-1, Y/N confirm, worker pool
 internal/mcv       version manifest, version JSON + inheritance, rules, args, install, natives
 internal/java      runtime discovery, major matching, runtime installation
+internal/auth      Microsoft login: browser (authorization code + loopback) and device code
 internal/launch    command line assembly + process start
 docs/              architecture + design decisions (keep in sync with code)
 ```
@@ -81,8 +83,23 @@ docs/              architecture + design decisions (keep in sync with code)
 * The current release line uses the new scheme (`26.3`, snapshot
   `26.4-snapshot-5`) and needs **Java 25**; `javaVersion.majorVersion` is
   authoritative, the id-based table is only a fallback.
+* Login is a two-flow affair, and that is not cosmetic:
+  * `--flow browser` (default) uses `https://login.live.com/oauth20_authorize.srf`
+    with `response_type=code`, a loopback server on ports 29116-29126 and
+    `https://login.live.com/oauth20_token.srf` for the exchange. Scope
+    `XboxLive.signin offline_access`. No client secret, no PKCE. This is what the
+    reference launcher does, and it is the only flow the shipped client id
+    supports.
+  * `--flow device` uses
+    `login.microsoftonline.com/consumers/oauth2/v2.0/devicecode` with scope
+    `service::user.auth.xboxlive.com::MBI_SSL offline_access`.
+  * Verified 2026-10-26: the reference launcher's client id
+    (`288ec5dd-6736-4d4b-9b96-30e083a8cad2`, read out of its release jar's
+    manifest) is accepted by Microsoft but answers
+    `AADSTS9002346: not configured for the device code flow`; the legacy
+    `00000000402b5328` is gone entirely (`AADSTS700016`). Hence the browser flow
+    is the default and `auth_client_id` is configurable.
 * Xbox Live chain endpoints that must stay reachable:
-  `login.microsoftonline.com/consumers/oauth2/v2.0/{devicecode,token}`,
   `user.auth.xboxlive.com/user/authenticate`,
   `xsts.auth.xboxlive.com/xsts/authorize`,
   `api.minecraftservices.com/authentication/login_with_xbox` and

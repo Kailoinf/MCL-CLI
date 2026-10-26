@@ -47,15 +47,18 @@ var en = map[string]string{
 	"err.config.lang":              "unsupported language %q (want auto|en|zh)",
 
 	// ---------------------------------------------------------------- db / secrets
-	"err.db.parse":       "cannot parse mcli.db (%s): %v",
-	"err.db.read":        "cannot read mcli.db: %v",
-	"err.db.salt":        "mcli.db has a corrupted salt: %v",
-	"err.db.write":       "cannot write mcli.db: %v",
-	"err.db.commit":      "cannot commit mcli.db: %v",
-	"err.db.no_save":     "cannot save mcli.db: %v",
+	"err.db.parse":       "cannot parse %s: %v",
+	"err.db.read":        "cannot read %s: %v",
+	"err.db.write":       "cannot write %s: %v",
+	"err.db.commit":      "cannot commit %s: %v",
+	"err.db.no_save":     "cannot save mcli state: %v",
+	"err.db.marshal":     "cannot serialise TOML: %v",
+	"db.migrated":        "imported the old %s into %s and %s; the old file can be deleted",
+	"db.unknown_key":     "ignored unknown key %s",
 	"err.secret.derive":  "key derivation failed: %v",
 	"err.secret.short":   "ciphertext is too short",
-	"err.secret.decrypt": "decryption failed: mcli.db was probably created on another machine, or its salt is damaged",
+	"err.secret.decrypt": "decryption failed: these tokens were encrypted on another machine (or the file was edited)",
+	"err.secret.nosalt":  "this account has no token_salt; log in again to recreate it",
 
 	// ---------------------------------------------------------------- downloader
 	"dl.skip_existing": "already present, skipping: %s",
@@ -184,8 +187,8 @@ var en = map[string]string{
 	"cli.usage":             "usage: mcli <command> [options]",
 	"cli.about":             "mcli — a command line launcher for Minecraft: Java Edition (Microsoft accounts only)",
 	"cli.help_hint":         "run `mcli help <command>` for details about a command",
-	"cli.cmd.login.usage":   "mcli login [--label <name>] [--force]",
-	"cli.cmd.login.desc":    "log in with a Microsoft account using the device code flow",
+	"cli.cmd.login.usage":   "mcli login [--flow browser|device] [--label <name>] [--no-browser] [--timeout <sec>]",
+	"cli.cmd.login.desc":    "log in with a Microsoft account (browser flow by default, device code optional)",
 	"cli.cmd.logout.usage":  "mcli logout [<account>] [--all]",
 	"cli.cmd.logout.desc":   "remove stored credentials",
 	"cli.cmd.list.usage":    "mcli list [--instances] [--accounts] [--available] [--type release|snapshot|old_beta|old_alpha] [--search <text>] [--limit N]",
@@ -217,7 +220,7 @@ var en = map[string]string{
 	"cli.flags_title":       "options:",
 	"cli.commands_title":    "commands:",
 	"cli.global_flags":      "global options: --lang <auto|en|zh>, --config <path>, --quiet, --verbose, --yes, --no-color",
-	"cli.config_path":       "mcli.db: %s",
+	"cli.config_path":       "config file: %s",
 	"cli.mcl_home":          "mcli home: %s",
 	"cli.minecraft_dir":     "game directory: %s",
 
@@ -239,4 +242,23 @@ var en = map[string]string{
 	"cli.flag_takes_no_value":    "option %s does not take a value",
 	"launch.resolution_pair":     "--width and --height must be given together",
 	"launch.unknown_placeholder": "the version uses a placeholder mcli cannot fill yet: ${%s}",
+
+	// ---------------------------------------------------------------- toml layout / auth client id
+	"cli.state_path":          "state file: %s",
+	"cli.last_path":           "last launch file: %s",
+	"cfg.desc.auth_client_id": "OAuth client id used for the Microsoft login",
+	"err.config.client_id":    "auth_client_id must not be empty",
+
+	// ---------------------------------------------------------------- browser login flow
+	"auth.browser_url":         "Open this URL to sign in: %s",
+	"auth.browser_waiting":     "waiting for the browser to return to %s (Ctrl-C to abort)",
+	"auth.browser_timeout":     "no response from the browser within %s",
+	"auth.browser_failed":      "sign-in failed: %s",
+	"auth.browser_headless":    "no display detected; open the URL above manually",
+	"auth.browser_open_failed": "cannot open a browser automatically (%v); open the URL manually",
+	"auth.port_hint":           "on a remote machine, forward port %d to this host first",
+	"auth.exchange_failed":     "authorization code exchange failed: %v",
+	"auth.no_code":             "the browser came back without an authorization code",
+	"auth.page_ok":             "Signed in. You can close this tab and return to the terminal.",
+	"auth.page_fail":           "Sign-in failed: %s",
 }

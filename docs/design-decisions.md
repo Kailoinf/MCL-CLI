@@ -2,17 +2,44 @@
 
 Each entry: the decision, why, and what it costs. Written to be argued with.
 
-## mcli.db is JSON, not SQLite
+## TOML instead of a database — and three files instead of one
 
-The requirement says "config, including the .minecraft location and other
-settings, in `.mcl-cli/mcli.db` with a `config` table". A single JSON document
-models that table exactly and keeps the launcher dependency-free — SQLite in Go
-means `modernc.org/sqlite` (large, cgo-free but heavy) or cgo. The document is
-written atomically and 0600.
+The requirement asks for "config in `.mcl-cli/mcli.db`, with a `config` table".
+A file called `.db` that is not a database is a trap for anyone who later opens
+it with `sqlite3`; real SQLite would mean a heavy cgo-free driver
+(`modernc.org/sqlite`) or cgo, against this project's zero-dependency rule.
+TOML satisfies both constraints: readable, format-accurate file names, and a
+parser/writer we can own (`internal/toml`, ~450 lines including tests).
 
-Cost: no concurrent writers, and every process writes the whole file (a few KB
-plus the manifest cache, ~300 KB). Acceptable for a CLI used by one user; if
-concurrent use ever matters, move the manifest cache to its own file first.
+The document is split three ways because the three parts have different
+owners and lifecycles:
+
+* `mcli.toml` — the user's. It must survive an editor session, so writes are
+  line-level patches (`toml.SetKeyInSection`) that keep comments, ordering and
+  unknown keys intact instead of re-serialising the struct.
+* `state.toml` — mcli's. Accounts, instances and the manifest pointer change on
+  every other command, so it is rewritten wholesale; it is where the only secret
+  material lives.
+* `last.toml` — the previous launch. `mcli launch --last` should not have to
+  parse a configuration to replay flags, so those ~15 values get their own tiny
+  file.
+
+Cost: three files instead of one, and a `--config <path>` override only moves
+the config (state and last derive from its directory). Both are documented in
+the README.
+
+## One salt per account, not one per machine
+
+Encryption keys are `PBKDF2-SHA256(machine identity, salt)`; the salt lives next
+to the account it protects. That keeps the blast radius of a stolen file small
+(the file alone is useless elsewhere) *and* keeps everything else portable: an
+installed game, the config and the instance list work on another computer, only
+the login has to happen again. A machine-wide salt would have made the whole
+state file non-transferable for no extra benefit.
+
+Legacy JSON `mcli.db` files (db_version 1) are imported once: the machine-wide
+salt is copied onto each imported account so existing tokens keep decrypting,
+and the old file is left untouched for the user to delete.
 
 ## Instance game directories live under `versions/<instance>/`
 

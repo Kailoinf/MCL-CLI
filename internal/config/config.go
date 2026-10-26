@@ -22,38 +22,41 @@ import (
 // desc tag is the i18n key describing it.
 type Config struct {
 	// --- download -------------------------------------------------------
-	DownloadRetryTimes int    `json:"download_retry_times" desc:"cfg.desc.download_retry_times"`
-	HTTPTimeout        int    `json:"http_timeout" desc:"cfg.desc.http_timeout"`
-	BmclapiEndpoint    string `json:"bmclapi_endpoint" desc:"cfg.desc.bmclapi_endpoint"`
-	MirrorFallback     bool   `json:"mirror_fallback" desc:"cfg.desc.mirror_fallback"`
+	DownloadRetryTimes int    `toml:"download_retry_times" desc:"cfg.desc.download_retry_times"`
+	HTTPTimeout        int    `toml:"http_timeout" desc:"cfg.desc.http_timeout"`
+	BmclapiEndpoint    string `toml:"bmclapi_endpoint" desc:"cfg.desc.bmclapi_endpoint"`
+	MirrorFallback     bool   `toml:"mirror_fallback" desc:"cfg.desc.mirror_fallback"`
 
 	// --- manifest -------------------------------------------------------
-	ManifestAutoRefresh bool `json:"manifest_auto_refresh" desc:"cfg.desc.manifest_auto_refresh"`
-	ManifestTTLHours    int  `json:"manifest_ttl_hours" desc:"cfg.desc.manifest_ttl_hours"`
+	ManifestAutoRefresh bool `toml:"manifest_auto_refresh" desc:"cfg.desc.manifest_auto_refresh"`
+	ManifestTTLHours    int  `toml:"manifest_ttl_hours" desc:"cfg.desc.manifest_ttl_hours"`
 
 	// --- paths ----------------------------------------------------------
-	MinecraftDir string `json:"minecraft_dir" desc:"cfg.desc.minecraft_dir"`
-	VersionsDir  string `json:"versions_dir" desc:"cfg.desc.versions_dir"`
-	JavaDir      string `json:"java_dir" desc:"cfg.desc.java_dir"`
-	JavaPath     string `json:"java_path" desc:"cfg.desc.java_path"`
+	MinecraftDir string `toml:"minecraft_dir" desc:"cfg.desc.minecraft_dir"`
+	VersionsDir  string `toml:"versions_dir" desc:"cfg.desc.versions_dir"`
+	JavaDir      string `toml:"java_dir" desc:"cfg.desc.java_dir"`
+	JavaPath     string `toml:"java_path" desc:"cfg.desc.java_path"`
 
 	// --- logging --------------------------------------------------------
-	LogLevelFile     string `json:"log_level_file" desc:"cfg.desc.log_level_file"`
-	LogLevelTerminal string `json:"log_level_terminal" desc:"cfg.desc.log_level_terminal"`
+	LogLevelFile     string `toml:"log_level_file" desc:"cfg.desc.log_level_file"`
+	LogLevelTerminal string `toml:"log_level_terminal" desc:"cfg.desc.log_level_terminal"`
 
 	// --- jvm ------------------------------------------------------------
-	AutoMemoryPercent int    `json:"auto_memory_percent" desc:"cfg.desc.auto_memory_percent"`
-	DefaultXmx        string `json:"default_xmx" desc:"cfg.desc.default_xmx"`
-	DefaultXms        string `json:"default_xms" desc:"cfg.desc.default_xms"`
-	ExtraJvmArgs      string `json:"extra_jvm_args" desc:"cfg.desc.extra_jvm_args"`
+	AutoMemoryPercent int    `toml:"auto_memory_percent" desc:"cfg.desc.auto_memory_percent"`
+	DefaultXmx        string `toml:"default_xmx" desc:"cfg.desc.default_xmx"`
+	DefaultXms        string `toml:"default_xms" desc:"cfg.desc.default_xms"`
+	ExtraJvmArgs      string `toml:"extra_jvm_args" desc:"cfg.desc.extra_jvm_args"`
 
 	// --- launch ---------------------------------------------------------
-	ConfirmLargeDownload bool `json:"confirm_large_download" desc:"cfg.desc.confirm_large_download"`
-	LargeDownloadMB      int  `json:"large_download_mb" desc:"cfg.desc.large_download_mb"`
-	CloseAfterLaunch     bool `json:"close_after_launch" desc:"cfg.desc.close_after_launch"`
+	ConfirmLargeDownload bool `toml:"confirm_large_download" desc:"cfg.desc.confirm_large_download"`
+	LargeDownloadMB      int  `toml:"large_download_mb" desc:"cfg.desc.large_download_mb"`
+	CloseAfterLaunch     bool `toml:"close_after_launch" desc:"cfg.desc.close_after_launch"`
+
+	// --- authentication -------------------------------------------------
+	AuthClientID string `toml:"auth_client_id" desc:"cfg.desc.auth_client_id"`
 
 	// --- interface ------------------------------------------------------
-	Language string `json:"language" desc:"cfg.desc.language"`
+	Language string `toml:"language" desc:"cfg.desc.language"`
 }
 
 // Default returns the built-in defaults. Paths that depend on the home
@@ -85,7 +88,40 @@ func Default() Config {
 		ConfirmLargeDownload: true,
 		LargeDownloadMB:      50,
 		CloseAfterLaunch:     true,
+		AuthClientID:         "288ec5dd-6736-4d4b-9b96-30e083a8cad2",
 		Language:             "auto",
+	}
+}
+
+// keyOf reads the user-facing key of a config field: the `toml` tag, else the
+// `json` tag, else the field name.
+func keyOf(f reflect.StructField) string {
+	if t := f.Tag.Get("toml"); t != "" {
+		return strings.Split(t, ",")[0]
+	}
+	if t := f.Tag.Get("json"); t != "" {
+		return strings.Split(t, ",")[0]
+	}
+	return f.Name
+}
+
+// RawValue returns the typed value of one key (string, int or bool), used by the
+// TOML writer so a patched line keeps its type.
+func (c *Config) RawValue(key string) (interface{}, error) {
+	f, err := fieldByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	v := reflect.ValueOf(c).Elem().FieldByIndex(f.Index)
+	switch v.Kind() {
+	case reflect.String:
+		return v.String(), nil
+	case reflect.Int:
+		return int(v.Int()), nil
+	case reflect.Bool:
+		return v.Bool(), nil
+	default:
+		return nil, fmt.Errorf("%s", i18n.T("err.config.bad_type", key))
 	}
 }
 
@@ -116,7 +152,7 @@ func Keys() []string {
 	t := reflect.TypeOf(Config{})
 	out := make([]string, 0, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
-		out = append(out, t.Field(i).Tag.Get("json"))
+		out = append(out, keyOf(t.Field(i)))
 	}
 	sort.Strings(out)
 	return out
@@ -207,7 +243,7 @@ func fieldByKey(key string) (reflect.StructField, error) {
 	t := reflect.TypeOf(Config{})
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if f.Tag.Get("json") == key {
+		if keyOf(f) == key {
 			return f, nil
 		}
 	}
@@ -266,6 +302,9 @@ func (c *Config) Validate() error {
 		if err := validateInt(k, n); err != nil {
 			return err
 		}
+	}
+	if c.AuthClientID == "" {
+		return fmt.Errorf("%s", i18n.T("err.config.client_id"))
 	}
 	if c.BmclapiEndpoint != "" && !strings.HasPrefix(c.BmclapiEndpoint, "http") {
 		return fmt.Errorf("%s", i18n.T("err.config.endpoint_scheme"))

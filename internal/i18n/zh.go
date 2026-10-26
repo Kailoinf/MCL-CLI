@@ -47,15 +47,18 @@ var zh = map[string]string{
 	"err.config.lang":              "不支持的语言 %q（可选 auto|en|zh）",
 
 	// ---------------------------------------------------------------- db / secrets
-	"err.db.parse":       "mcli.db 解析失败（%s）：%v",
-	"err.db.read":        "读取 mcli.db 失败：%v",
-	"err.db.salt":        "mcli.db 盐值损坏：%v",
-	"err.db.write":       "写入 mcli.db 失败：%v",
-	"err.db.commit":      "提交 mcli.db 失败：%v",
-	"err.db.no_save":     "保存 mcli.db 失败：%v",
+	"err.db.parse":       "%s 解析失败：%v",
+	"err.db.read":        "读取 %s 失败：%v",
+	"err.db.write":       "写入 %s 失败：%v",
+	"err.db.commit":      "提交 %s 失败：%v",
+	"err.db.no_save":     "保存 mcli 状态失败：%v",
+	"err.db.marshal":     "TOML 序列化失败：%v",
+	"db.migrated":        "已把旧的 %s 导入 %s 与 %s，旧文件可以删除",
+	"db.unknown_key":     "忽略了未知配置键 %s",
 	"err.secret.derive":  "派生密钥失败：%v",
 	"err.secret.short":   "密文长度不足",
-	"err.secret.decrypt": "解密失败：mcli.db 可能来自另一台机器，或盐值已损坏",
+	"err.secret.decrypt": "解密失败：这些令牌是在另一台机器上加密的（或文件被改动过）",
+	"err.secret.nosalt":  "该账号缺少 token_salt，请重新登录以重新生成",
 
 	// ---------------------------------------------------------------- downloader
 	"dl.skip_existing": "已存在，跳过：%s",
@@ -184,8 +187,8 @@ var zh = map[string]string{
 	"cli.usage":             "用法：mcli <命令> [选项]",
 	"cli.about":             "mcli — Minecraft: Java 版命令行启动器（仅支持微软正版账号）",
 	"cli.help_hint":         "执行 mcli help <命令> 查看该命令的详细说明",
-	"cli.cmd.login.usage":   "mcli login [--label <名称>] [--force]",
-	"cli.cmd.login.desc":    "使用设备码流程登录微软账号",
+	"cli.cmd.login.usage":   "mcli login [--flow browser|device] [--label <名称>] [--no-browser] [--timeout <秒>]",
+	"cli.cmd.login.desc":    "登录微软账号（默认浏览器授权码流程，可切设备码流程）",
 	"cli.cmd.logout.usage":  "mcli logout [<账号>] [--all]",
 	"cli.cmd.logout.desc":   "清除已保存的凭证",
 	"cli.cmd.list.usage":    "mcli list [--instances] [--accounts] [--available] [--type release|snapshot|old_beta|old_alpha] [--search <文本>] [--limit N]",
@@ -217,7 +220,7 @@ var zh = map[string]string{
 	"cli.flags_title":       "选项：",
 	"cli.commands_title":    "命令：",
 	"cli.global_flags":      "全局选项：--lang <auto|en|zh>、--config <路径>、--quiet、--verbose、--yes、--no-color",
-	"cli.config_path":       "mcli.db：%s",
+	"cli.config_path":       "配置文件：%s",
 	"cli.mcl_home":          "mcli 主目录：%s",
 	"cli.minecraft_dir":     "游戏目录：%s",
 
@@ -239,4 +242,23 @@ var zh = map[string]string{
 	"cli.flag_takes_no_value":    "选项 %s 不接受参数值",
 	"launch.resolution_pair":     "--width 与 --height 必须同时给出",
 	"launch.unknown_placeholder": "该版本使用了 mcli 尚未支持的占位符：${%s}",
+
+	// ---------------------------------------------------------------- toml 布局 / 登录 client id
+	"cli.state_path":          "状态文件：%s",
+	"cli.last_path":           "上次启动文件：%s",
+	"cfg.desc.auth_client_id": "登录微软账号使用的 OAuth client id",
+	"err.config.client_id":    "auth_client_id 不能为空",
+
+	// ---------------------------------------------------------------- 浏览器登录流程
+	"auth.browser_url":         "请在浏览器打开此链接登录：%s",
+	"auth.browser_waiting":     "等待浏览器回调到 %s（Ctrl-C 可中止）",
+	"auth.browser_timeout":     "%s 内没有收到浏览器回调",
+	"auth.browser_failed":      "登录失败：%s",
+	"auth.browser_headless":    "未检测到图形环境，请手动打开上面的链接",
+	"auth.browser_open_failed": "无法自动打开浏览器（%v），请手动打开链接",
+	"auth.port_hint":           "如果在远程机器上，请先把 %d 端口转发到本机",
+	"auth.exchange_failed":     "授权码换取令牌失败：%v",
+	"auth.no_code":             "浏览器回调里没有授权码",
+	"auth.page_ok":             "已登录，可以关闭此页面并回到终端。",
+	"auth.page_fail":           "登录失败：%s",
 }

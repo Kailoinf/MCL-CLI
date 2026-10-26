@@ -55,17 +55,29 @@ mcli launch <instance>
 * `libraries/` and `assets/` are shared by all versions, exactly like the
   official launcher.
 
-## mcli.db
+## The three documents in ~/.mcl-cli
 
-Single JSON document, written atomically (`.tmp` + rename, mode 0600):
+All TOML, parsed and written by `internal/toml` (no dependency), always written
+atomically (`.tmp` + rename):
 
 ```
-db_version, salt
-config{}        ← the config table (see internal/config)
-accounts{}      ← keyed by Minecraft UUID; tokens stored AES-GCM encrypted
-instances{}     ← name → {version, per-instance java/xmx/xms/jvm+game args}
-last_launch{}   ← everything `mcli launch --last` needs
-manifest_cache{}← raw version manifest + fetch time + which source served it
+mcli.toml       [config]        ← the config table (see internal/config)
+                hand-editable; `config set` patches one line in place, so
+                comments, ordering and extra keys survive; no secrets, so it is
+                portable between machines
+
+state.toml      db_version      machine-owned (0600)
+                accounts{}      ← keyed by Minecraft UUID; each entry carries
+                                  its own token_salt plus AES-GCM encrypted tokens
+                instances{}     ← name → {version, per-instance java/xmx/xms/args}
+                manifest_cache{}← which source served the manifest, when, and the
+                                  path of the cached body
+
+last.toml       the previous launch (instance, version, java, xmx/xms, window
+                size, jvm/game args, game dir) — tiny on purpose: `launch --last`
+                never has to read mcli.toml or state.toml
+
+cache/version_manifest_v2.json   the raw manifest body, exactly as downloaded
 ```
 
 ## Error handling style

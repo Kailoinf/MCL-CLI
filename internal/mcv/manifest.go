@@ -3,6 +3,8 @@ package mcv
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -65,13 +67,15 @@ func (m *Manifest) Filter(kind, search string, limit int) []ManifestVersion {
 	return out
 }
 
-// ManifestStore caches the manifest inside mcli.db and refreshes it when its
-// TTL expired.
+// ManifestStore caches the manifest on disk (raw JSON under cache/) and keeps
+// only its metadata in state.toml, so the TOML documents stay small.
 type ManifestStore struct {
 	DB     *store.DB
 	Mapper mirror.Mapper
 	Policy dl.Policy
 	Log    *logx.Logger
+	// CacheFile is where the raw manifest JSON lives.
+	CacheFile string
 }
 
 // Get returns the manifest, refreshing it when the cache is missing or older
@@ -83,37 +87,67 @@ func (m *ManifestStore) Get(force bool) (*Manifest, error) {
 	if ttl <= 0 {
 		ttl = 6 * time.Hour
 	}
-	if cache != nil && !force {
+	raw, cacheErr := m.readCache()
+	haveCache := cache != nil && cacheErr == nil
+
+	if haveCache && !force {
 		age := time.Since(cache.FetchedAt)
 		if age < ttl {
 			m.log().Debugf("%s", i18n.T("mcv.manifest_cached", age.Round(time.Minute)))
-			return decodeManifest(cache.Raw)
+			return decodeManifest(raw)
 		}
 		if !cfg.ManifestAutoRefresh {
 			m.log().Warnf("%s", i18n.T("mcv.manifest_expired"))
-			return decodeManifest(cache.Raw)
+			return decodeManifest(raw)
 		}
 		m.log().Infof("%s", i18n.T("mcv.manifest_expired"))
 	}
-	man, source, raw, err := m.fetch()
+	man, source, fresh, err := m.fetch()
 	if err != nil {
-		if cache != nil {
+		if haveCache {
 			m.log().Warnf("%s", i18n.T("mcv.manifest_failed", err))
-			return decodeManifest(cache.Raw)
+			return decodeManifest(raw)
 		}
 		return nil, fmt.Errorf("%s", i18n.T("mcv.manifest_failed", err))
 	}
+	if m.CacheFile != "" {
+		if err := writeRaw(m.CacheFile, fresh); err != nil {
+			m.log().Warnf("%s", err)
+		}
+	}
 	m.DB.Data.Manifest = &store.ManifestCache{
 		Source:    source,
-		URL:       mirror.ManifestURL,
 		FetchedAt: time.Now(),
-		Raw:       raw,
+		File:      m.CacheFile,
 	}
 	if err := m.DB.Save(); err != nil {
 		m.log().Warnf("%s", i18n.T("err.db.no_save", err))
 	}
 	m.log().Infof("%s", i18n.T("mcv.manifest_refreshed", source, len(man.Versions)))
 	return man, nil
+}
+
+// readCache returns the cached manifest body, if it is still there.
+func (m *ManifestStore) readCache() ([]byte, error) {
+	path := m.CacheFile
+	if path == "" && m.DB.Data.Manifest != nil {
+		path = m.DB.Data.Manifest.File
+	}
+	if path == "" {
+		return nil, os.ErrNotExist
+	}
+	return os.ReadFile(path)
+}
+
+func writeRaw(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 func (m *ManifestStore) fetch() (*Manifest, string, json.RawMessage, error) {

@@ -36,7 +36,7 @@ go build -o mcli .        # 需要 Go 1.24+（用了 crypto/pbkdf2 等新标准�
 ## 快速上手
 
 ```sh
-mcli login                                   # 打印设备码：打开网址、输入代码
+mcli login                                   # 打开浏览器授权（可用 --flow device 走设备码）
 mcli list --available --limit 10             # 看能装哪些版本
 mcli create vanilla --version 1.21.4         # 建一个隔离实例
 mcli launch vanilla                          # 缺什么自动下载，然后启动游戏
@@ -56,7 +56,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 
 | 命令 | 作用 |
 |---|---|
-| `mcli login [--label <名称>] [--timeout <秒>]` | 微软设备码登录 |
+| `mcli login [--flow browser\|device] [--label <名称>] [--no-browser] [--timeout <秒>]` | 登录微软账号（默认浏览器流程） |
 | `mcli logout [<账号>] [--all]` | 清除已保存凭证 |
 | `mcli list [--instances] [--accounts] [--available] [--type <类型>] [--search <文本>] [--limit N]` | 列出实例、账号或可下载版本 |
 | `mcli create <名称> --version <版本> [--java <路径>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...]` | 创建实例 |
@@ -72,8 +72,13 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 
 ## 配置项
 
-`mcli config list` 会带中文说明列出全部；数据存在 `~/.mcl-cli/mcli.db`
-（JSON，权限 0600）。
+`mcli config list` 会带中文说明列出全部。mcli 在 `~/.mcl-cli/` 里放三个小 TOML 文件：
+
+| 文件 | 内容 | 说明 |
+|---|---|---|
+| `mcli.toml` | 配置表 | 可手工编辑；`config set` 只改一行，注释与顺序保留；可跨机器使用 |
+| `state.toml` | 账号、实例、清单缓存指针 | 机器状态（0600），令牌加密存放 |
+| `last.toml` | 上次启动参数 | 刻意很小，`launch --last` 不必读配置与状态 |
 
 | 键 | 默认值 | 说明 |
 |---|---|---|
@@ -94,6 +99,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `confirm_large_download` | true | 大文件下载前 Y/N 确认 |
 | `large_download_mb` | 50 | 多大算大文件 |
 | `close_after_launch` | true | 启动后立即返回 |
+| `auth_client_id` | 参考项目的公开 id | 登录用 OAuth client id |
 | `language` | auto | `auto\|en\|zh` |
 
 环境变量：`MCLI_HOME`（默认 `~/.mcl-cli`）、`MCLI_MINECRAFT`（默认
@@ -104,9 +110,11 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 
 ```
 ~/.mcl-cli/                 与其它启动器不共享的状态
-├─ mcli.db                  配置表 + 账号 + 实例 + 版本清单缓存
+├─ mcli.toml                配置表（可手改的 TOML）
+├─ state.toml               账号、实例、清单指针（0600）
+├─ last.toml                上次启动参数，供 mcli launch --last
 ├─ jdk/<component>/         mcli 安装的 Java 运行时
-├─ cache/                   元数据缓存
+├─ cache/                   缓存的版本清单（原始 JSON）
 └─ logs/                    mcli-YYYYMMDD.log、game-<实例>-<时间>.log
 
 ~/.minecraft/               与官方启动器完全一致的布局
@@ -116,15 +124,17 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
    └─ versions/{实例}/        实例自己的游戏目录（saves、options.txt 等）
 ```
 
-`mcli.db` 用单个 JSON 文档而不是 SQLite：需求只要一个小配置表，JSON 能让启动器
-保持零依赖，理由写在 `docs/design-decisions.md`。
+拆成三个文件是刻意的：TOML 由 `internal/toml` 自己读写（零依赖），文件名与格式
+一致，配置本来就是给人改的，上次启动参数单独放一个小文件（理由见
+`docs/design-decisions.md`）。
 
 ## 账号与安全
 
-只支持微软账号。`mcli login` 只打印设备码和网址，密码不会经过 mcli。
-refresh token 与 Minecraft 会话令牌用 AES-256-GCM 加密，密钥由本机标识 +
-`mcli.db` 中的随机盐经 PBKDF2-SHA256（20 万次）派生——不依赖系统密钥链，
-把 `mcli.db` 拷到别的机器也解不开。
+只支持微软账号。`mcli login` 会打开微软授权页（如果你的 client id 支持设备码，
+可用 `--flow device` 切换），密码不会经过 mcli。令牌用 AES-256-GCM 加密，密钥由
+本机标识 + **每个账号自己的 salt**（存在该账号条目里）经 PBKDF2-SHA256（20 万次）
+派生——不依赖系统密钥链，账号条目拷到别的机器也解不开；而配置、实例、上次启动
+参数都不含密钥，可直接跨机器使用。
 
 ## 镜像行为
 

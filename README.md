@@ -38,7 +38,7 @@ Optionally `install -m755 mcli /usr/local/bin/mcli`.
 ## Quick start
 
 ```sh
-mcli login                                   # device code: open the URL, type the code
+mcli login                                   # opens your browser (use --flow device for a code)
 mcli list --available --limit 10             # what can be installed
 mcli create vanilla --version 1.21.4         # isolated instance
 mcli launch vanilla                          # installs what is missing, then starts the game
@@ -58,7 +58,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 
 | Command | Purpose |
 |---|---|
-| `mcli login [--label <name>] [--timeout <sec>]` | Microsoft device-code login |
+| `mcli login [--flow browser\|device] [--label <name>] [--no-browser] [--timeout <sec>]` | Microsoft login (browser flow by default) |
 | `mcli logout [<account>] [--all]` | remove stored credentials |
 | `mcli list [--instances] [--accounts] [--available] [--type <t>] [--search <text>] [--limit N]` | instances, accounts or downloadable versions |
 | `mcli create <name> --version <v> [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...]` | create an instance |
@@ -74,8 +74,14 @@ Global options accepted anywhere: `--lang <auto\|en\|zh>`, `--config <path>`,
 
 ## Configuration
 
-`mcli config list` shows everything with descriptions. Stored in
-`~/.mcl-cli/mcli.db` (JSON, 0600).
+`mcli config list` shows everything with descriptions. mcli keeps three small
+TOML documents in `~/.mcl-cli/`:
+
+| File | Contents | Notes |
+|---|---|---|
+| `mcli.toml` | the config table | hand-editable; `config set` patches one line, so your comments and ordering survive; portable between machines |
+| `state.toml` | accounts, instances, manifest-cache pointer | machine state (0600); tokens are encrypted |
+| `last.toml` | the previous launch | deliberately tiny, so `launch --last` never reads the config or state |
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -96,6 +102,7 @@ Global options accepted anywhere: `--lang <auto\|en\|zh>`, `--config <path>`,
 | `confirm_large_download` | true | ask Y/N before large downloads |
 | `large_download_mb` | 50 | threshold for "large" |
 | `close_after_launch` | true | return right after spawning the game |
+| `auth_client_id` | reference launcher's public id | OAuth client id for `mcli login` |
 | `language` | auto | `auto\|en\|zh` |
 
 Environment overrides: `MCLI_HOME` (default `~/.mcl-cli`), `MCLI_MINECRAFT`
@@ -106,9 +113,11 @@ Environment overrides: `MCLI_HOME` (default `~/.mcl-cli`), `MCLI_MINECRAFT`
 
 ```
 ~/.mcl-cli/                 state that is not shared with other launchers
-├─ mcli.db                  config table + accounts + instances + manifest cache
+├─ mcli.toml                configuration table (hand-editable TOML)
+├─ state.toml               accounts, instances, manifest pointer (0600)
+├─ last.toml                previous launch, for `mcli launch --last`
 ├─ jdk/<component>/         Java runtimes installed by mcli
-├─ cache/                   metadata cache
+├─ cache/                   cached version manifest (raw JSON)
 └─ logs/                    mcli-YYYYMMDD.log, game-<instance>-<time>.log
 
 ~/.minecraft/               identical layout to the official launcher
@@ -118,18 +127,21 @@ Environment overrides: `MCLI_HOME` (default `~/.mcl-cli`), `MCLI_MINECRAFT`
    └─ versions/{instance}/  per-instance game dir (saves, options.txt, ...)
 ```
 
-`mcli.db` is a single JSON document instead of SQLite on purpose: the spec asks
-for a small config table, and a JSON file keeps the launcher dependency-free
-(see `docs/design-decisions.md`).
+Splitting the documents is deliberate: TOML is written and parsed by
+`internal/toml` (no dependency), the file name always matches its format, the
+config is meant to be opened in an editor, and the previous launch lives in its
+own tiny file (see `docs/design-decisions.md`).
 
 ## Accounts and security
 
-Only Microsoft accounts are supported. `mcli login` prints a device code and a
-URL; no password ever reaches mcli. The refresh token and the Minecraft session
-token are encrypted with AES-256-GCM under a key derived (PBKDF2-SHA256,
-200k iterations) from this machine's identifiers plus a random salt stored in
-`mcli.db` — no OS keychain, and copying `mcli.db` to another machine makes the
-tokens undecryptable.
+Only Microsoft accounts are supported. `mcli login` opens the Microsoft
+authorize page (`--flow device` switches to the device-code flow if your client
+id supports it); no password ever reaches mcli. Tokens are encrypted with
+AES-256-GCM under a key derived (PBKDF2-SHA256, 200k iterations) from this
+machine's identifiers **plus a per-account salt stored with that account** — no
+OS keychain, and an account entry copied to another machine cannot be
+decrypted. Everything else (config, instances, last launch) carries no secrets
+and works on any machine.
 
 ## Mirror behaviour
 

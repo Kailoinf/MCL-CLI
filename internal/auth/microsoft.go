@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -24,9 +25,11 @@ import (
 	"github.com/Kailoinf/MCL-CLI/internal/logx"
 )
 
-// ClientID is the well-known public client id used by console launchers for
-// the device code flow. It is not a secret: it ships in every launcher.
-const ClientID = "00000000402b5328"
+// ClientID is the public client id used by default. It is the one the reference
+// launcher (console-minecraft-launcher) ships, read out of its release jar's
+// manifest; Microsoft accepts it for the authorization-code + loopback flow but
+// rejects it for device codes, which is why the browser flow is the default.
+const ClientID = "288ec5dd-6736-4d4b-9b96-30e083a8cad2"
 
 // Scope requests an Xbox Live ticket plus a refresh token.
 const Scope = "service::user.auth.xboxlive.com::MBI_SSL offline_access"
@@ -83,6 +86,31 @@ type Client struct {
 	HTTP    *http.Client
 	Log     *logx.Logger
 	Timeout time.Duration
+	// ClientID overrides the built-in public client id. Different client ids
+	// support different flows: the browser flow works with the id the reference
+	// launcher uses, while a device-code capable id is needed for `--flow device`.
+	ClientID string
+	// TokenURL is where Refresh talks to. The browser flow uses
+	// LiveTokenURL; the device flow uses the consumers v2 endpoint.
+	TokenURL string
+	// RefreshScope is sent with refresh requests. login.live.com wants no scope
+	// on refresh, login.microsoftonline.com does.
+	RefreshScope string
+}
+
+// UseBrowserFlow points the client at the login.live.com endpoints, which are
+// the ones the default client id supports.
+func (c *Client) UseBrowserFlow() {
+	c.TokenURL = LiveTokenURL
+	c.RefreshScope = ""
+}
+
+// clientID returns the effective OAuth client id.
+func (c *Client) clientID() string {
+	if c.ClientID != "" {
+		return c.ClientID
+	}
+	return ClientID
 }
 
 // NewClient builds a client with sane defaults.
@@ -203,14 +231,14 @@ func (c *Client) log() *logx.Logger {
 
 // RequestDeviceCode starts the flow.
 func (c *Client) RequestDeviceCode() (*DeviceCode, error) {
-	form := "client_id=" + ClientID + "&scope=" + strings.ReplaceAll(Scope, " ", "+")
+	form := "client_id=" + c.clientID() + "&scope=" + strings.ReplaceAll(Scope, " ", "+")
 	dev := &DeviceCode{}
 	err := c.post(deviceCodeURL, map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
 	}, form, dev)
 	if err != nil {
 		// Retry once through the JSON form, some tenants prefer it.
-		if err2 := c.post(deviceCodeURL, nil, map[string]string{"client_id": ClientID, "scope": Scope}, dev); err2 != nil {
+		if err2 := c.post(deviceCodeURL, nil, map[string]string{"client_id": c.clientID(), "scope": Scope}, dev); err2 != nil {
 			return nil, fmt.Errorf("%s", i18n.T("auth.device_failed", err))
 		}
 	}
@@ -243,7 +271,7 @@ func (c *Client) WaitForToken(dev *DeviceCode, timeout time.Duration) (*MSTokens
 			return nil, fmt.Errorf("%s", i18n.T("auth.device_expired"))
 		}
 		form := "grant_type=urn:ietf:params:oauth:grant-type:device_code" +
-			"&client_id=" + ClientID +
+			"&client_id=" + c.clientID() +
 			"&device_code=" + dev.DeviceCode
 		var out struct {
 			AccessToken      string `json:"access_token"`
@@ -303,15 +331,25 @@ func asHTTPError(err error, out **HTTPError) bool {
 
 // Refresh exchanges a refresh token for fresh MSA tokens.
 func (c *Client) Refresh(refreshToken string) (*MSTokens, error) {
-	form := "grant_type=refresh_token&client_id=" + ClientID +
-		"&refresh_token=" + refreshToken +
-		"&scope=" + strings.ReplaceAll(Scope, " ", "+")
+	endpoint := c.TokenURL
+	if endpoint == "" {
+		endpoint = tokenURL
+	}
+	scope := c.RefreshScope
+	if scope == "" && c.TokenURL == "" {
+		scope = Scope // the device-flow endpoint requires the scope on refresh
+	}
+	form := "grant_type=refresh_token&client_id=" + url.QueryEscape(c.clientID()) +
+		"&refresh_token=" + url.QueryEscape(refreshToken)
+	if scope != "" {
+		form += "&scope=" + strings.ReplaceAll(scope, " ", "+")
+	}
 	var out struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int    `json:"expires_in"`
 	}
-	if err := c.post(tokenURL, map[string]string{
+	if err := c.post(endpoint, map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
 	}, form, &out); err != nil {
 		return nil, fmt.Errorf("%s", i18n.T("auth.refresh_failed", err))

@@ -41,10 +41,16 @@ func (a *App) cmdLaunch(args []string) int {
 
 	// --- resolve target instance -----------------------------------------
 	var instName, versionID string
+	// width/height default to whatever the previous launch used, so `--last`
+	// replays the same window size; explicit flags win below.
+	width, height := 0, 0
 	var base *store.Instance
 	switch {
 	case f.boolean("last"):
-		last := a.DB.Data.Last
+		last, err := a.DB.Last()
+		if err != nil {
+			return a.fatal(err)
+		}
 		if last == nil {
 			return a.fatal(fmt.Errorf("%s", i18n.T("launch.last_missing")))
 		}
@@ -59,6 +65,7 @@ func (a *App) cmdLaunch(args []string) int {
 			JvmArgs:  last.JvmArgs,
 			GameArgs: last.GameArgs,
 		}
+		width, height = last.Width, last.Height
 	case len(f.args) > 0:
 		instName = f.args[0]
 		inst, ok := a.DB.GetInstance(instName)
@@ -91,11 +98,11 @@ func (a *App) cmdLaunch(args []string) int {
 	jvmArgs := append(append([]string{}, base.JvmArgs...), f.lists["jvm-arg"]...)
 	jvmArgs = append(jvmArgs, splitArgs(a.DB.Cfg().ExtraJvmArgs)...)
 	gameArgs := append(append([]string{}, base.GameArgs...), f.lists["game-arg"]...)
-	width, err := f.int("width", 0)
+	width, err = f.int("width", width)
 	if err != nil {
 		return a.fatal(err)
 	}
-	height, err := f.int("height", 0)
+	height, err = f.int("height", height)
 	if err != nil {
 		return a.fatal(err)
 	}
@@ -155,7 +162,7 @@ func (a *App) cmdLaunch(args []string) int {
 		if _, sess, err := a.session(acc); err != nil {
 			return a.fatal(err)
 		} else {
-			authBlock = authFor(acc, sess)
+			authBlock = authFor(acc, sess, a.ClientID())
 		}
 	case dryRun:
 		a.Log.Warnf("%s", i18n.T("auth.no_account"))
@@ -193,12 +200,16 @@ func (a *App) cmdLaunch(args []string) int {
 	a.Log.Printf("%s", i18n.T("inst.game_dir", cmd.GameDir))
 
 	// --- remember for --last ---------------------------------------------
-	a.DB.Data.Last = &store.LastLaunch{
+	// last.toml is its own tiny document: replaying flags never needs to read
+	// mcli.toml or state.toml.
+	last := &store.LastLaunch{
 		Instance: instName,
 		Version:  versionID,
 		Java:     f.str("java", ""),
 		Xmx:      xmx,
 		Xms:      xms,
+		Width:    width,
+		Height:   height,
 		JvmArgs:  jvmArgs,
 		GameArgs: gameArgs,
 		GameDir:  cmd.GameDir,
@@ -211,10 +222,13 @@ func (a *App) cmdLaunch(args []string) int {
 		}
 	}
 	if !dryRun {
-		if err := a.DB.Save(); err != nil {
+		if err := a.DB.SaveLast(last); err != nil {
 			a.Log.Warnf("%s", err)
 		} else {
 			a.Log.Debugf("%s", i18n.T("launch.saved_args"))
+		}
+		if err := a.DB.Save(); err != nil {
+			a.Log.Warnf("%s", err)
 		}
 	}
 

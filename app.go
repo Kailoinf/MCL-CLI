@@ -48,11 +48,13 @@ func newApp(glob *flags) (*App, error) {
 	if err := p.Ensure(); err != nil {
 		return nil, err
 	}
-	dbPath := p.DB()
+	configPath := p.Config()
 	if v, ok := glob.values["config"]; ok && v != "" {
-		dbPath = v
+		configPath = v
 	}
-	db, err := store.Open(dbPath)
+	statePath := filepath.Join(filepath.Dir(configPath), paths.StateFile)
+	lastPath := filepath.Join(filepath.Dir(configPath), paths.LastFile)
+	db, err := store.Open(configPath, statePath, lastPath)
 	if err != nil {
 		return nil, err
 	}
@@ -88,9 +90,15 @@ func newApp(glob *flags) (*App, error) {
 	cfg := db.Cfg()
 	if cfg.JavaDir == "" {
 		cfg.JavaDir = p.JDKDir()
-		if err := db.Save(); err != nil {
+		if err := db.SaveConfigValue("java_dir"); err != nil {
 			log.Warnf("%s", i18n.T("err.db.no_save", err))
 		}
+	}
+	if from := db.MigratedFrom(); from != "" {
+		log.Infof("%s", i18n.T("db.migrated", from, db.Path, db.StatePath))
+	}
+	for _, key := range db.UnknownKeys {
+		log.Warnf("%s", i18n.T("db.unknown_key", key))
 	}
 
 	app := &App{
@@ -138,7 +146,21 @@ func (a *App) VersionsDir() string {
 
 // ManifestStore wires the manifest cache to mcli.db.
 func (a *App) ManifestStore() *mcv.ManifestStore {
-	return &mcv.ManifestStore{DB: a.DB, Mapper: a.Mapper(), Policy: a.Policy(), Log: a.Log}
+	return &mcv.ManifestStore{
+		DB:        a.DB,
+		Mapper:    a.Mapper(),
+		Policy:    a.Policy(),
+		Log:       a.Log,
+		CacheFile: a.Paths.ManifestFile(),
+	}
+}
+
+// ClientID is the OAuth client id used for the device-code flow.
+func (a *App) ClientID() string {
+	if id := a.DB.Cfg().AuthClientID; id != "" {
+		return id
+	}
+	return auth.ClientID
 }
 
 // Loader wires the version JSON loader.
@@ -189,7 +211,12 @@ func (a *App) AuthClient(timeout time.Duration) *auth.Client {
 	if timeout <= 0 {
 		timeout = time.Duration(a.DB.Cfg().HTTPTimeout) * time.Second
 	}
-	return auth.NewClient(timeout, a.Log)
+	client := auth.NewClient(timeout, a.Log)
+	client.ClientID = a.ClientID()
+	// The default client id only supports the browser (authorization code)
+	// flow, so refresh tokens must go back to the endpoint that issued them.
+	client.UseBrowserFlow()
+	return client
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +294,7 @@ func (a *App) activeAccount() (*store.Account, error) {
 // session returns a usable Minecraft session, refreshing the token when the
 // stored one is close to expiry.
 func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error) {
-	key, err := a.DB.Key()
+	key, err := a.DB.AccountKey(acc)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -308,7 +335,10 @@ func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error)
 
 // storeSession persists fresh tokens (encrypted) and the profile identity.
 func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string) error {
-	key, err := a.DB.Key()
+	if err := a.DB.SetAccountSalt(acc); err != nil {
+		return err
+	}
+	key, err := a.DB.AccountKey(acc)
 	if err != nil {
 		return err
 	}
@@ -346,13 +376,16 @@ func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string)
 }
 
 // authFor builds the placeholder auth block for a launch.
-func authFor(acc *store.Account, sess *auth.Session) mcv.Auth {
+func authFor(acc *store.Account, sess *auth.Session, clientID string) mcv.Auth {
+	if clientID == "" {
+		clientID = auth.ClientID
+	}
 	return mcv.Auth{
 		PlayerName:  sess.Profile.Name,
 		UUID:        strings.ReplaceAll(sess.Profile.ID, "-", ""),
 		AccessToken: sess.MC.AccessToken,
 		XUID:        sess.XUID,
-		ClientID:    auth.ClientID,
+		ClientID:    clientID,
 		UserType:    "msa",
 		Properties:  "{}",
 	}
