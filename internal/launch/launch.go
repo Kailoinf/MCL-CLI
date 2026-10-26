@@ -72,8 +72,11 @@ func Prep(o Options) (*Command, error) {
 	versionsDir := filepath.Join(o.Root, o.VersionsDir)
 	libsDir := filepath.Join(o.Root, "libraries")
 	assetsRoot := filepath.Join(o.Root, "assets")
-	nativesDir := filepath.Join(versionsDir, o.VersionID, "natives")
-	clientJar := filepath.Join(versionsDir, o.VersionID, o.VersionID+".jar")
+	// Version files live under the version's own directory, not the instance's:
+	// `mcli launch demo --version 1.20.1` must use the 1.20.1 files, and a
+	// profile with an inherited jar (Fabric) reuses the parent's copy.
+	nativesDir := filepath.Join(versionsDir, v.ID, "natives")
+	_, clientJar := mcv.ClientJarTarget(o.Root, o.VersionsDir, v)
 	gameDir := filepath.Join(versionsDir, o.InstanceName)
 	if o.InstanceName == "" {
 		gameDir = filepath.Join(o.Root, "game")

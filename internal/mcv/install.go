@@ -82,13 +82,14 @@ func (in Installer) Ensure(v *Version) (*Result, error) {
 
 	res := &Result{
 		VersionID:  v.ID,
-		ClientJar:  filepath.Join(versionsDir, v.ID, v.ID+".jar"),
 		NativesDir: filepath.Join(versionsDir, v.ID, "natives"),
 	}
+	jarID, jarPath := ClientJarTarget(in.Root, in.VersionsDir, v)
+	res.ClientJar = jarPath
 	in.log().Infof("%s", i18n.T("mcv.installing", v.ID, in.Root))
 
 	// --- client jar ------------------------------------------------------
-	client, err := in.clientItem(v, res.ClientJar)
+	client, err := in.clientItem(v, jarID, jarPath)
 	if err != nil {
 		return nil, err
 	}
@@ -236,23 +237,25 @@ func (in Installer) Ensure(v *Version) (*Result, error) {
 	return res, nil
 }
 
-func (in Installer) clientItem(v *Version, dest string) (dl.Item, error) {
+func (in Installer) clientItem(v *Version, jarID, dest string) (dl.Item, error) {
+	// The mirror's client endpoint is keyed by version id, and for an inherited
+	// jar that key is the parent (the vanilla) version.
 	if d, ok := v.Downloads["client"]; ok && d.URL != "" {
 		return dl.Item{
-			Candidates: in.Mapper.ClientJar(v.ID, d.URL),
+			Candidates: in.Mapper.ClientJar(jarID, d.URL),
 			Dest:       dest,
 			SHA1:       d.SHA1,
 			Size:       d.Size,
-			Desc:       "client " + v.ID,
+			Desc:       "client " + jarID,
 		}, nil
 	}
 	if in.Mapper.Endpoint == "" {
 		return dl.Item{}, fmt.Errorf("%s", i18n.T("mcv.no_client_jar", v.ID))
 	}
 	return dl.Item{
-		Candidates: in.Mapper.ClientJar(v.ID, ""),
+		Candidates: in.Mapper.ClientJar(jarID, ""),
 		Dest:       dest,
-		Desc:       "client " + v.ID,
+		Desc:       "client " + jarID,
 	}, nil
 }
 
@@ -299,6 +302,14 @@ func (in Installer) extractAllNatives(v *Version, libsDir, nativesDir string) er
 	if err := os.MkdirAll(nativesDir, 0o755); err != nil {
 		return err
 	}
+	// The version's arguments may point at subdirectories (jna/lwjgl/netty/java);
+	// create them so nothing references a missing directory.
+	targets := v.NativesTargets(nativesDir)
+	for _, t := range targets {
+		if err := os.MkdirAll(t, 0o755); err != nil {
+			return err
+		}
+	}
 	in.log().Infof("%s", i18n.T("mcv.natives_extract", nativesDir))
 	for _, l := range v.Libraries {
 		if !l.AllowedFor(in.Env) {
@@ -313,11 +324,51 @@ func (in Installer) extractAllNatives(v *Version, libsDir, nativesDir string) er
 		if _, err := os.Stat(src); err != nil {
 			return fmt.Errorf("%s", i18n.T("mcv.missing_sources", l.Name))
 		}
-		if err := ExtractNatives(src, nativesDir, l); err != nil {
-			return err
+		for _, dir := range nativeDirsFor(targets, nativesDir, l.Name) {
+			if err := ExtractNatives(src, dir, l); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// nativeDirsFor decides where one natives jar is unpacked. The base directory
+// always gets the files (that is where a legacy java.library.path points), plus
+// the family subdirectory the version asks for: LWJGL's natives belong in
+// …/natives/lwjgl, JNA's in …/natives/jna, Netty's in …/natives/netty, and
+// everything else in the first directory java.library.path mentions.
+func nativeDirsFor(targets []string, nativesDir, libName string) []string {
+	dirs := []string{nativesDir}
+	family := ""
+	switch {
+	case strings.HasPrefix(libName, "org.lwjgl"):
+		family = "lwjgl"
+	case strings.HasPrefix(libName, "net.java.dev.jna"):
+		family = "jna"
+	case strings.HasPrefix(libName, "io.netty"):
+		family = "netty"
+	}
+	extra := ""
+	if family != "" {
+		for _, t := range targets {
+			if filepath.Base(t) == family {
+				extra = t
+				break
+			}
+		}
+	} else {
+		for _, t := range targets {
+			if t != nativesDir {
+				extra = t
+				break
+			}
+		}
+	}
+	if extra != "" && extra != nativesDir {
+		dirs = append(dirs, extra)
+	}
+	return dirs
 }
 
 // ReadAssetIndex parses an index file.

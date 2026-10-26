@@ -274,6 +274,10 @@ type Version struct {
 	Logging            *struct {
 		Client *LoggingClient `json:"client,omitempty"`
 	} `json:"logging,omitempty"`
+	// Jar names the version whose client jar this one runs, when it is not its
+	// own. Modded profiles (Fabric, OptiFine, …) inherit from a vanilla version
+	// and usually ship no client download at all.
+	Jar                    string `json:"jar,omitempty"`
 	ComplianceLevel        int    `json:"complianceLevel,omitempty"`
 	MinimumLauncherVersion int    `json:"minimumLauncherVersion,omitempty"`
 	ReleaseTime            string `json:"releaseTime,omitempty"`
@@ -287,6 +291,90 @@ type Version struct {
 
 // Parent returns the version this one inherits from, if loaded.
 func (v *Version) Parent() *Version { return v.parent }
+
+// NativesTargets returns the directories this version's JVM arguments expect
+// native libraries in, resolved against nativesDir.
+//
+// A plain Mojang version only says ${natives_directory}. Newer ones — and every
+// modded profile PCL or HMCL flattens — point JNA, LWJGL and Netty at their own
+// subdirectory (…/natives/jna, …/natives/lwjgl, …/natives/netty) because those
+// libraries unpack their natives from the classpath at run time, while
+// …/natives/java is what java.library.path gets pointed at for everything else.
+// Creating those directories (and putting the natives where the arguments look
+// for them) is what makes an install produced by another launcher usable.
+func (v *Version) NativesTargets(nativesDir string) []string {
+	if v == nil || v.Arguments == nil || nativesDir == "" {
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if p == "" || seen[p] {
+			return
+		}
+		if p != nativesDir && !strings.HasPrefix(p, nativesDir+string(filepath.Separator)) {
+			return // someone else's directory: not ours to manage
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	for _, arg := range v.Arguments.JVM {
+		for _, raw := range arg.Value {
+			for _, key := range nativesArgKeys {
+				if !strings.HasPrefix(raw, key) {
+					continue
+				}
+				value := strings.ReplaceAll(raw[len(key):], "${natives_directory}", nativesDir)
+				for _, part := range splitPathList(value) {
+					add(filepath.Clean(part))
+				}
+			}
+		}
+	}
+	return out
+}
+
+// nativesArgKeys are the JVM properties that name a natives directory.
+var nativesArgKeys = []string{
+	"-Djava.library.path=",
+	"-Djna.tmpdir=",
+	"-Dorg.lwjgl.system.SharedLibraryExtractPath=",
+	"-Dio.netty.native.workdir=",
+}
+
+// splitPathList splits a path list on both the platform separator and ';', so a
+// Windows-style value read on Linux (or the reverse) still parses.
+func splitPathList(s string) []string {
+	sep := string(filepath.ListSeparator)
+	if sep != ";" {
+		s = strings.ReplaceAll(s, ";", sep)
+	}
+	return strings.Split(s, sep)
+}
+
+// ClientJarTarget returns the version id whose client jar this version runs and
+// the absolute path that jar lives at.
+//
+// A modded profile inherits from (or was flattened out of) a vanilla version.
+// The official launcher uses the "jar" field for that; in the wild the vanilla
+// client jar is often already copied into the profile's own directory (PCL and
+// HMCL both do), so an existing local jar wins over re-downloading 40 MB into
+// the parent's directory. Order: the "jar" field, a jar already in the version's
+// own directory, the inherited parent, then its own directory as a last resort.
+func ClientJarTarget(root, versionsDir string, v *Version) (jarID, path string) {
+	dir := filepath.Join(root, versionsDir)
+	own := filepath.Join(dir, v.ID, v.ID+".jar")
+	if v.Jar != "" && v.Jar != v.ID {
+		return v.Jar, filepath.Join(dir, v.Jar, v.Jar+".jar")
+	}
+	if _, err := os.Stat(own); err == nil {
+		return v.ID, own
+	}
+	if v.InheritsFrom != "" {
+		return v.InheritsFrom, filepath.Join(dir, v.InheritsFrom, v.InheritsFrom+".jar")
+	}
+	return v.ID, own
+}
 
 // Effective returns the merged version: child fields win, parent libraries and
 // arguments come first. It is what launching and installing operate on.
@@ -321,6 +409,9 @@ func merge(parent, child *Version) *Version {
 	}
 	if out.MinecraftArguments == "" {
 		out.MinecraftArguments = parent.MinecraftArguments
+	}
+	if out.Jar == "" {
+		out.Jar = parent.Jar
 	}
 	out.Downloads = map[string]Download{}
 	for k, d := range parent.Downloads {

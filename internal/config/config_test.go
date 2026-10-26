@@ -103,7 +103,7 @@ func TestKeysAreUniqueAndSorted(t *testing.T) {
 }
 
 func TestFillMissingRestoresDefaults(t *testing.T) {
-	c := Config{} // as if unmarshalled from an old mcli.db
+	c := Config{} // as if unmarshalled from an older mcli.toml
 	c.FillMissing()
 	if c.HTTPTimeout != 30 || c.BmclapiEndpoint == "" || c.VersionsDir != "versions" {
 		t.Errorf("FillMissing did not restore defaults: %+v", c)

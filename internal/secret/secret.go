@@ -1,12 +1,12 @@
 // Package secret encrypts account tokens with a key derived from this machine.
 //
 // Design: AES-256-GCM, key = PBKDF2-SHA256(machine identity, salt). The salt
-// lives in mcli.db, the identity is read from the host (/etc/machine-id,
+// lives in state.toml, the identity is read from the host (/etc/machine-id,
 // product UUID, hostname, user). Consequences, on purpose:
 //
 //   - no OS keychain / secret service dependency
-//   - copying mcli.db to another machine makes the tokens undecryptable
-//   - stealing mcli.db alone is not enough to read the refresh token
+//   - copying state.toml to another machine makes the tokens undecryptable
+//   - stealing state.toml alone is not enough to read the refresh token
 package secret
 
 import (
@@ -59,7 +59,7 @@ func DeriveKey(identity string, salt []byte) ([]byte, error) {
 	return key, nil
 }
 
-// NewSalt returns fresh salt bytes for a brand-new mcli.db (also doubles as a
+// NewSalt returns fresh salt bytes for a brand-new account (also doubles as a
 // "this DB was created here" marker).
 func NewSalt() ([]byte, error) {
 	b := make([]byte, 16)

@@ -29,11 +29,13 @@ type ConfirmFunc func(desc string, size int64) (bool, error)
 
 // Policy configures retries, timeouts and prompting.
 type Policy struct {
-	Retries   int
-	Timeout   time.Duration
-	LargeMB   int
-	Confirm   ConfirmFunc
-	Log       *logx.Logger
+	Retries int
+	Timeout time.Duration
+	LargeMB int
+	Confirm ConfirmFunc
+	Log     *logx.Logger
+	// Health demotes a repeatedly failing source for the rest of a run.
+	Health    *SourceHealth
 	stallTime time.Duration
 }
 
@@ -118,14 +120,19 @@ func (p Policy) Fetch(it Item) error {
 	if attempts < 1 {
 		attempts = 1
 	}
+	cands := p.Health.Order(it.Candidates)
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		for _, c := range it.Candidates {
+		for _, c := range cands {
 			if err := p.fetchOnce(it, c); err != nil {
+				if p.Health.Fail(c.Source) {
+					p.log().Warnf("%s", i18n.T("dl.source_unhealthy", c.Source))
+				}
 				lastErr = err
 				p.log().Warnf("%s", i18n.T("dl.failed_source", it.Desc, c.Source, err))
 				continue
 			}
+			p.Health.OK(c.Source)
 			p.log().Debugf("%s", i18n.T("dl.complete", it.Desc, c.Source))
 			return nil
 		}
@@ -273,11 +280,16 @@ func (p Policy) FetchBytes(cands []mirror.Candidate, desc string) ([]byte, strin
 	if attempts < 1 {
 		attempts = 1
 	}
+	cands = p.Health.Order(cands)
 	for attempt := 1; attempt <= attempts; attempt++ {
 		for _, c := range cands {
 			body, err := p.getBytes(c.URL)
 			if err == nil {
+				p.Health.OK(c.Source)
 				return body, c.Source, nil
+			}
+			if p.Health.Fail(c.Source) {
+				p.log().Warnf("%s", i18n.T("dl.source_unhealthy", c.Source))
 			}
 			lastErr = err
 			p.log().Warnf("%s", i18n.T("dl.failed_source", desc, c.Source, err))
@@ -313,7 +325,7 @@ func (p Policy) getBytes(u string) ([]byte, error) {
 }
 
 // UserAgent is sent with every request.
-const UserAgent = "mcli/0.1 (+https://github.com/Kailoinf/MCL-CLI)"
+const UserAgent = "mcli/0.2 (+https://github.com/Kailoinf/MCL-CLI)"
 
 func (p Policy) timeout() time.Duration {
 	if p.Timeout > 0 {

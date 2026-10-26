@@ -564,7 +564,30 @@ func parseValue(s string) (interface{}, error) {
 	if f, err := strconv.ParseFloat(numeric, 64); err == nil {
 		return f, nil
 	}
+	// A bare datetime (1979-05-27T07:32:00Z) is legal TOML. mcli writes times as
+	// quoted RFC3339 strings, but a hand-edited file may use the bare form, so
+	// accept it as a string and let the decoder turn it into a time.Time.
+	if isDateTime(s) {
+		return s, nil
+	}
 	return nil, fmt.Errorf("unsupported value %q", s)
+}
+
+// isDateTime reports whether s looks like a TOML datetime.
+func isDateTime(s string) bool {
+	if len(s) < 10 || s[4] != '-' {
+		return false
+	}
+	for _, layout := range []string{
+		time.RFC3339, time.RFC3339Nano,
+		"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02",
+		"2006-01-02 15:04:05", "2006-01-02 15:04",
+	} {
+		if _, err := time.Parse(layout, s); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func splitTopLevel(s string) []string {

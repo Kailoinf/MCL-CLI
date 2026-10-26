@@ -21,7 +21,7 @@ import (
 )
 
 // Version is the mcli version reported by `mcli version`.
-var Version = "0.1.0"
+var Version = "0.2.0"
 
 // LauncherName is handed to the game as -Dminecraft.launcher.brand.
 const LauncherName = "mcli"
@@ -34,6 +34,10 @@ type App struct {
 
 	Yeseverything bool // --yes: never prompt
 	DryRun        bool
+
+	// Health is shared by every download policy in a run, so a mirror that
+	// starts stalling is demoted once instead of once per file.
+	Health *dl.SourceHealth
 
 	started time.Time
 }
@@ -52,9 +56,14 @@ func newApp(glob *flags) (*App, error) {
 	if v, ok := glob.values["config"]; ok && v != "" {
 		configPath = v
 	}
-	statePath := filepath.Join(filepath.Dir(configPath), paths.StateFile)
-	lastPath := filepath.Join(filepath.Dir(configPath), paths.LastFile)
-	db, err := store.Open(configPath, statePath, lastPath)
+	dir := filepath.Dir(configPath)
+	db, err := store.Open(store.Files{
+		Config:  configPath,
+		State:   filepath.Join(dir, paths.StateFile),
+		Refresh: filepath.Join(dir, paths.RefreshFile),
+		Session: filepath.Join(dir, paths.SessionFile),
+		Last:    filepath.Join(dir, paths.LastFile),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +106,9 @@ func newApp(glob *flags) (*App, error) {
 	if from := db.MigratedFrom(); from != "" {
 		log.Infof("%s", i18n.T("db.migrated", from, db.Path, db.StatePath))
 	}
+	if db.Data.DBVersion > store.DBVersion {
+		log.Warnf("%s", i18n.T("db.too_new", db.StatePath, db.Data.DBVersion, store.DBVersion))
+	}
 	for _, key := range db.UnknownKeys {
 		log.Warnf("%s", i18n.T("db.unknown_key", key))
 	}
@@ -106,6 +118,7 @@ func newApp(glob *flags) (*App, error) {
 		DB:            db,
 		Log:           log,
 		Yeseverything: glob.boolean("yes"),
+		Health:        dl.NewSourceHealth(3),
 		started:       time.Now(),
 	}
 	return app, nil
@@ -128,6 +141,7 @@ func (a *App) Policy() dl.Policy {
 		Timeout: time.Duration(cfg.HTTPTimeout) * time.Second,
 		LargeMB: cfg.LargeDownloadMB,
 		Log:     a.Log,
+		Health:  a.Health,
 		Confirm: a.confirmFile,
 	}
 }
@@ -191,14 +205,15 @@ func (a *App) Installer(dryRun bool) mcv.Installer {
 	}
 }
 
-// JavaInstaller wires the runtime installer.
-func (a *App) JavaInstaller() java.Installer {
+// JavaInstaller wires the runtime installer. force reinstalls from scratch.
+func (a *App) JavaInstaller(force bool) java.Installer {
 	return java.Installer{
 		Mapper:   a.Mapper(),
 		Policy:   a.Policy(),
 		Log:      a.Log,
 		DestRoot: a.DB.Cfg().JavaDir,
 		Workers:  6,
+		Force:    force,
 		Confirm: func(desc string, files int, total int64) (bool, error) {
 			return a.confirmBatch(desc, files, total)
 		},
@@ -298,9 +313,10 @@ func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error)
 	if err != nil {
 		return nil, nil, err
 	}
+	_, stored := a.DB.Tokens(acc.UUID)
 	client := a.AuthClient(0)
-	if acc.MCTokenEnc != "" && time.Until(acc.MCTokenExp) > 5*time.Minute {
-		mcToken, err := secret.Decrypt(key, acc.MCTokenEnc)
+	if stored.MCTokenEnc != "" && time.Until(stored.MCTokenExp) > 5*time.Minute {
+		mcToken, err := secret.Decrypt(key, stored.MCTokenEnc)
 		if err == nil {
 			prof, err := client.MineProfile(string(mcToken))
 			if err == nil {
@@ -311,7 +327,7 @@ func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error)
 					acc.UUID = prof.ID
 				}
 				return acc, &auth.Session{
-					MC:      auth.MCTokens{AccessToken: string(mcToken), ExpiresAt: acc.MCTokenExp},
+					MC:      auth.MCTokens{AccessToken: string(mcToken), ExpiresAt: stored.MCTokenExp},
 					Profile: *prof,
 					XUID:    acc.XUID,
 				}, nil
@@ -319,7 +335,7 @@ func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error)
 			a.Log.Debugf("%s", i18n.T("auth.refreshing"))
 		}
 	}
-	refreshEnc, err := secret.Decrypt(key, acc.RefreshEnc)
+	refreshEnc, err := secret.Decrypt(key, a.DB.Data.Refresh[acc.UUID].RefreshEnc)
 	if err != nil || len(refreshEnc) == 0 {
 		return nil, nil, fmt.Errorf("%s", i18n.T("auth.refresh_failed", err))
 	}
@@ -333,7 +349,10 @@ func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error)
 	return acc, sess, nil
 }
 
-// storeSession persists fresh tokens (encrypted) and the profile identity.
+// storeSession persists fresh credentials and the profile identity: identity to
+// state.toml, the refresh token to refresh.toml, the Minecraft token to
+// session.toml. Each credential gets its own file so a short-lived token never
+// sits in the same document as the long-lived one.
 func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string) error {
 	if err := a.DB.SetAccountSalt(acc); err != nil {
 		return err
@@ -354,9 +373,6 @@ func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string)
 	if label != "" {
 		acc.Label = label
 	}
-	acc.RefreshEnc = refreshEnc
-	acc.MCTokenEnc = mcEnc
-	acc.MCTokenExp = sess.MC.ExpiresAt
 	acc.Name = sess.Profile.Name
 	acc.UUID = sess.Profile.ID
 	acc.XUID = sess.XUID
@@ -368,11 +384,18 @@ func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string)
 		acc.Label = "ms:" + acc.Name
 	}
 	if oldUUID != "" && oldUUID != acc.UUID {
-		delete(a.DB.Data.Accounts, oldUUID)
+		a.DB.DropAccount(oldUUID)
 	}
+	tok, session := a.DB.Tokens(acc.UUID)
+	tok.RefreshEnc = refreshEnc
+	session.MCTokenEnc = mcEnc
+	session.MCTokenExp = sess.MC.ExpiresAt
 	a.DB.Data.Accounts[acc.UUID] = acc
 	a.DB.SetActive(acc.UUID)
-	return a.DB.Save()
+	if err := a.DB.Save(); err != nil {
+		return err
+	}
+	return a.DB.SaveTokens()
 }
 
 // authFor builds the placeholder auth block for a launch.

@@ -15,15 +15,30 @@ import (
 func openTemp(t *testing.T) *DB {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := Open(
-		filepath.Join(dir, "mcli.toml"),
-		filepath.Join(dir, "state.toml"),
-		filepath.Join(dir, "last.toml"),
-	)
+	db, err := Open(Files{
+		Config:  filepath.Join(dir, "mcli.toml"),
+		State:   filepath.Join(dir, "state.toml"),
+		Refresh: filepath.Join(dir, "refresh.toml"),
+		Session: filepath.Join(dir, "session.toml"),
+		Last:    filepath.Join(dir, "last.toml"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return db
+}
+
+// reopen closes and re-opens the same home, as a second mcli run would.
+func reopen(t *testing.T, db *DB) *DB {
+	t.Helper()
+	again, err := Open(Files{
+		Config: db.Path, State: db.StatePath, Refresh: db.RefreshPath,
+		Session: db.SessionPath, Last: db.LastPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return again
 }
 
 func TestOpenCreatesDefaults(t *testing.T) {
@@ -84,10 +99,7 @@ func TestConfigIsPersistedAndCommentsSurvive(t *testing.T) {
 	if err := os.WriteFile(db.Path, []byte(handWritten), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := Open(db.Path, db.StatePath, db.LastPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	reopened := reopen(t, db)
 	if v, _ := reopened.Cfg().Get("minecraft_dir"); v != "/srv/mc" {
 		t.Errorf("hand-written value not read: %q", v)
 	}
@@ -114,10 +126,7 @@ func TestConfigIsPersistedAndCommentsSurvive(t *testing.T) {
 		}
 	}
 	// and it survives a round trip
-	again, err := Open(db.Path, db.StatePath, db.LastPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	again := reopen(t, db)
 	if again.Cfg().ManifestTTLHours != 12 {
 		t.Errorf("patched value not readable: %d", again.Cfg().ManifestTTLHours)
 	}
@@ -172,10 +181,7 @@ func TestLastLaunchIsItsOwnSmallFile(t *testing.T) {
 		t.Error("last.toml must contain nothing but the previous launch")
 	}
 
-	again, err := Open(db.Path, db.StatePath, db.LastPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	again := reopen(t, db)
 	got, err := again.Last()
 	if err != nil {
 		t.Fatal(err)
@@ -197,8 +203,9 @@ func TestAccountTokenSaltLifecycle(t *testing.T) {
 	if err := db.SetAccountSalt(acc); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := base64.StdEncoding.DecodeString(acc.TokenSalt); err != nil {
-		t.Errorf("salt is not base64: %q", acc.TokenSalt)
+	tok, _ := db.Tokens(acc.UUID)
+	if _, err := base64.StdEncoding.DecodeString(tok.Salt); err != nil {
+		t.Errorf("salt is not base64: %q", tok.Salt)
 	}
 	first, err := db.AccountKey(acc)
 	if err != nil {
@@ -218,7 +225,8 @@ func TestAccountTokenSaltLifecycle(t *testing.T) {
 	if err := db.SetAccountSalt(other); err != nil {
 		t.Fatal(err)
 	}
-	if other.TokenSalt == acc.TokenSalt {
+	otherTok, _ := db.Tokens(other.UUID)
+	if otherTok.Salt == tok.Salt {
 		t.Error("each account needs its own salt")
 	}
 	otherKey, _ := db.AccountKey(other)
@@ -230,13 +238,17 @@ func TestAccountTokenSaltLifecycle(t *testing.T) {
 	if err := db.Save(); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Open(db.Path, db.StatePath, db.LastPath)
-	if err != nil {
+	if err := db.SaveTokens(); err != nil {
 		t.Fatal(err)
 	}
+	again := reopen(t, db)
 	reloaded := again.Data.Accounts["abc"]
-	if reloaded == nil || reloaded.TokenSalt != acc.TokenSalt {
-		t.Fatalf("salt not persisted: %+v", reloaded)
+	if reloaded == nil {
+		t.Fatalf("account not persisted: %+v", reloaded)
+	}
+	reloadedTok, _ := again.Tokens("abc")
+	if reloadedTok.Salt != tok.Salt {
+		t.Fatalf("salt not persisted: %+v", reloadedTok)
 	}
 	keyAgain, err := again.AccountKey(reloaded)
 	if err != nil {
@@ -285,10 +297,7 @@ func TestInstanceOrderingPrefersRecentlyPlayed(t *testing.T) {
 	if err := db.Save(); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Open(db.Path, db.StatePath, db.LastPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	again := reopen(t, db)
 	if _, ok := again.GetInstance("dotted.name"); !ok {
 		t.Errorf("instance with a dot in its name was lost: %v", again.InstanceNames())
 	}
@@ -318,7 +327,13 @@ func TestLegacyJSONDatabaseIsImported(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "mcli.db"), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	db, err := Open(filepath.Join(dir, "mcli.toml"), filepath.Join(dir, "state.toml"), filepath.Join(dir, "last.toml"))
+	db, err := Open(Files{
+		Config:  filepath.Join(dir, "mcli.toml"),
+		State:   filepath.Join(dir, "state.toml"),
+		Refresh: filepath.Join(dir, "refresh.toml"),
+		Session: filepath.Join(dir, "session.toml"),
+		Last:    filepath.Join(dir, "last.toml"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,11 +344,16 @@ func TestLegacyJSONDatabaseIsImported(t *testing.T) {
 		t.Errorf("legacy config not imported: %q", v)
 	}
 	acc := db.Data.Accounts["abc"]
-	if acc == nil || acc.RefreshEnc != "sealed" {
+	if acc == nil {
 		t.Fatalf("legacy account not imported: %+v", acc)
 	}
-	if acc.TokenSalt != salt {
-		t.Errorf("legacy salt must move onto the account, got %q", acc.TokenSalt)
+	// the credentials must have landed in the credential documents, not in state
+	tok, _ := db.Tokens("abc")
+	if tok.RefreshEnc != "sealed" {
+		t.Fatalf("legacy refresh token not imported: %+v", tok)
+	}
+	if tok.Salt != salt {
+		t.Errorf("legacy salt must move onto the account, got %q", tok.Salt)
 	}
 	if _, err := db.AccountKey(acc); err != nil {
 		t.Errorf("imported account must still yield a key: %v", err)
@@ -348,10 +368,164 @@ func TestLegacyJSONDatabaseIsImported(t *testing.T) {
 		t.Errorf("legacy manifest body not moved into cache/: %v", err)
 	}
 	// the new files must exist straight away
-	for _, name := range []string{"mcli.toml", "state.toml", "last.toml"} {
+	for _, name := range []string{"mcli.toml", "state.toml", "refresh.toml", "session.toml", "last.toml"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("%s not written after migration: %v", name, err)
 		}
+	}
+}
+
+// TestCredentialsLiveInTheirOwnFiles pins the split: identity in state.toml (so
+// that file stays shareable), long-lived and short-lived tokens in two separate
+// 0600 documents, and no token material anywhere else.
+func TestCredentialsLiveInTheirOwnFiles(t *testing.T) {
+	i18n.Set("en")
+	db := openTemp(t)
+	acc := &Account{UUID: "abc", Name: "Kailo", Label: "ms:Kailo", Active: true}
+	db.Data.Accounts["abc"] = acc
+	if err := db.SetAccountSalt(acc); err != nil {
+		t.Fatal(err)
+	}
+	db.SetRefreshToken("abc", db.Data.Refresh["abc"].Salt, "sealed-refresh")
+	db.SetSessionToken("abc", "sealed-session", time.Now().Add(24*time.Hour))
+	if err := db.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveTokens(); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := os.ReadFile(db.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"sealed-refresh", "sealed-session"} {
+		if strings.Contains(string(state), secret) {
+			t.Errorf("state.toml must not carry credentials, found %q:\n%s", secret, state)
+		}
+	}
+	refresh, err := os.ReadFile(db.RefreshPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(refresh), "sealed-refresh") {
+		t.Errorf("refresh.toml must hold the refresh token:\n%s", refresh)
+	}
+	if strings.Contains(string(refresh), "sealed-session") {
+		t.Error("refresh.toml must not hold the short-lived token")
+	}
+	session, err := os.ReadFile(db.SessionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(session), "sealed-session") {
+		t.Errorf("session.toml must hold the Minecraft token:\n%s", session)
+	}
+	for _, path := range []string{db.RefreshPath, db.SessionPath} {
+		st, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Mode().Perm() != 0o600 {
+			t.Errorf("%s permissions = %o, want 600", filepath.Base(path), st.Mode().Perm())
+		}
+	}
+
+	// and both halves survive a reload
+	again := reopen(t, db)
+	tok, sess := again.Tokens("abc")
+	if tok.RefreshEnc != "sealed-refresh" || sess.MCTokenEnc != "sealed-session" {
+		t.Fatalf("credentials lost across runs: %+v %+v", tok, sess)
+	}
+	if again.Data.Accounts["abc"] == nil || again.Data.Refresh["abc"] == nil {
+		t.Fatal("account or token record missing after reload")
+	}
+
+	// logging out removes the account and its credentials everywhere
+	again.DropAccount("abc")
+	if err := again.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := again.SaveTokens(); err != nil {
+		t.Fatal(err)
+	}
+	final := reopen(t, again)
+	if len(final.Data.Accounts) != 0 || len(final.Data.Refresh) != 0 || len(final.Data.Session) != 0 {
+		t.Fatalf("logout left something behind: %+v %+v %+v",
+			final.Data.Accounts, final.Data.Refresh, final.Data.Session)
+	}
+}
+
+// TestPreSplitStateIsMigrated covers the v2 layout, where the tokens still sat
+// inside the account records.
+func TestPreSplitStateIsMigrated(t *testing.T) {
+	i18n.Set("en")
+	dir := t.TempDir()
+	salt := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef"))
+	oldState := `db_version = 2
+
+[accounts.abc]
+name = "Kailo"
+uuid = "abc"
+label = "ms:Kailo"
+token_salt = "` + salt + `"
+refresh_token_enc = "sealed-refresh"
+mc_token_enc = "sealed-session"
+mc_token_expires = 2026-10-27T10:00:00Z
+active = true
+added_at = 2026-10-20T10:00:00Z
+
+[instances.vanilla]
+name = "vanilla"
+version = "1.21.4"
+created_at = 2026-10-20T10:00:00Z
+`
+	if err := os.WriteFile(filepath.Join(dir, "state.toml"), []byte(oldState), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(Files{
+		Config:  filepath.Join(dir, "mcli.toml"),
+		State:   filepath.Join(dir, "state.toml"),
+		Refresh: filepath.Join(dir, "refresh.toml"),
+		Session: filepath.Join(dir, "session.toml"),
+		Last:    filepath.Join(dir, "last.toml"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if db.Data.DBVersion != DBVersion {
+		t.Errorf("db version = %d, want %d", db.Data.DBVersion, DBVersion)
+	}
+	acc := db.Data.Accounts["abc"]
+	if acc == nil || acc.Name != "Kailo" || !acc.Active {
+		t.Fatalf("account identity lost in migration: %+v", acc)
+	}
+	tok, sess := db.Tokens("abc")
+	if tok.RefreshEnc != "sealed-refresh" || tok.Salt != salt {
+		t.Fatalf("refresh credentials not split out: %+v", tok)
+	}
+	if sess.MCTokenEnc != "sealed-session" || sess.MCTokenExp.IsZero() {
+		t.Fatalf("session credentials not split out: %+v", sess)
+	}
+	if _, ok := db.GetInstance("vanilla"); !ok {
+		t.Error("instance lost in migration")
+	}
+	// the account files were rewritten without the credential keys
+	raw, err := os.ReadFile(db.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "refresh_token_enc") {
+		t.Errorf("state.toml still carries credentials after migration:\n%s", raw)
+	}
+	// and a second open is a plain load, not another migration
+	again := reopen(t, db)
+	tok2, _ := again.Tokens("abc")
+	if tok2.RefreshEnc != "sealed-refresh" {
+		t.Fatalf("credentials lost on the second open: %+v", tok2)
+	}
+	if len(again.UnknownKeys) != 0 {
+		t.Errorf("migration leftovers reported as unknown keys: %v", again.UnknownKeys)
 	}
 }
 
@@ -361,7 +535,13 @@ func TestUnknownKeysAreReportedNotSwallowed(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "mcli.toml"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	db, err := Open(filepath.Join(dir, "mcli.toml"), filepath.Join(dir, "state.toml"), filepath.Join(dir, "last.toml"))
+	db, err := Open(Files{
+		Config:  filepath.Join(dir, "mcli.toml"),
+		State:   filepath.Join(dir, "state.toml"),
+		Refresh: filepath.Join(dir, "refresh.toml"),
+		Session: filepath.Join(dir, "session.toml"),
+		Last:    filepath.Join(dir, "last.toml"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

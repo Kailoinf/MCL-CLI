@@ -60,6 +60,8 @@ func run(argv []string) int {
 		return app.cmdLogout(args)
 	case "list", "ls":
 		return app.cmdList(args)
+	case "account", "accounts", "acc":
+		return app.cmdAccount(args)
 	case "create":
 		return app.cmdCreate(args)
 	case "delete", "remove", "rm":
@@ -92,6 +94,7 @@ func printHelp(app *App, topic string) {
 	cmds := []cmd{
 		{"login", "cli.cmd.login.usage", "cli.cmd.login.desc"},
 		{"logout", "cli.cmd.logout.usage", "cli.cmd.logout.desc"},
+		{"account", "cli.cmd.account.usage", "cli.cmd.account.desc"},
 		{"list", "cli.cmd.list.usage", "cli.cmd.list.desc"},
 		{"create", "cli.cmd.create.usage", "cli.cmd.create.desc"},
 		{"instance", "cli.cmd.instance.usage", "cli.cmd.instance.desc"},
@@ -144,6 +147,8 @@ func (a *App) cmdVersion() int {
 	a.Log.Printf("mcli %s", Version)
 	a.Log.Printf("%s", i18n.T("cli.mcl_home", a.Paths.Home))
 	a.Log.Printf("%s", i18n.T("cli.config_path", a.DB.Path))
+	a.Log.Printf("%s", i18n.T("cli.state_path", a.DB.StatePath))
 	a.Log.Printf("%s", i18n.T("cli.minecraft_dir", a.MinecraftDir()))
+	a.Log.Printf("%s", i18n.T("auth.summary", a.accountSummary()))
 	return 0
 }

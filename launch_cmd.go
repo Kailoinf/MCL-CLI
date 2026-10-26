@@ -324,10 +324,10 @@ func (a *App) ensureJava(v *mcv.Version, versionID string, need int, pinned stri
 	if v.JavaVersion != nil {
 		component = v.JavaVersion.Component
 	}
-	exe, err := a.JavaInstaller().Install(component, need)
+	exe, err := a.JavaInstaller(false).Install(component, need)
 	if err != nil {
 		a.Log.Warnf("%s", i18n.T("java.install_failed", err))
-		exe, err = a.JavaInstaller().InstallFromArchive(need)
+		exe, err = a.JavaInstaller(false).InstallFromArchive(need)
 		if err != nil {
 			return nil, err
 		}

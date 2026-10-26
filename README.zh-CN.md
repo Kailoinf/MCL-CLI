@@ -16,11 +16,13 @@
 | 下载 | 优先 BMCLAPI 镜像，失败自动回退官方源；SHA-1 校验；失败重试；大文件先确认 |
 | 版本 | release / snapshot / old_beta / old_alpha；清单带 TTL 缓存；支持 inheritsFrom 合并与老版 minecraftArguments |
 | Java | 扫描本机 Java（PATH、JAVA_HOME、发行版目录、官方启动器的 runtime、mcli 自己的 jdk/），按版本所需主版本匹配；找不到可从镜像安装 |
-| 实例 | 多实例隔离，每个实例独立存档与设置；libraries / assets / versions 全局共享；随时用 `mcli instance` 修改、复制、改名 |
-| 界面 | 中英文双语，`--lang auto\|en\|zh` |
+| 实例 | 多实例隔离，每个实例独立存档与设置；libraries / assets / versions 全局共享；随时用 `mcli instance` 修改、复制、改名，也能接管别的启动器装好的 `.minecraft`（instance scan / import） |
+| 账号 | 同时支持多个微软账号：`mcli account list` 查看、`use` 切换、`launch --account` 单次指定；刷新令牌与会话令牌分别加密存放在两个文件里 |
+| 界面 | 中英文双语，`--lang auto\|en\|zh`；表格按显示宽度对齐，中文路径不会挤歪列 |
 | 日志 | 终端只显示要点，完整日志写入 `~/.mcl-cli/logs/` |
 
-按需求文档刻意不做：Fabric/Forge/Quilt、Mod 与资源包管理、离线账号、GUI。
+按需求文档刻意不做：安装 Fabric/Forge/Quilt、Mod 与资源包管理、离线账号、GUI。
+但"运行别人装好的整合包"是支持的：接管后照原样启动，只是不帮你装加载器。
 
 ## 安装
 
@@ -37,9 +39,18 @@ go build -o mcli .        # 需要 Go 1.24+（用了 crypto/pbkdf2 等新标准�
 
 ```sh
 mcli login                                   # 打开浏览器授权（可用 --flow device 走设备码）
+mcli account list                            # 看已登录的账号，以及当前默认账号
 mcli list --available --limit 10             # 看能装哪些版本
 mcli create vanilla --version latest         # 建一个隔离实例（latest | latest-snapshot | 具体版本号）
 mcli launch vanilla                          # 缺什么自动下载，然后启动游戏
+```
+
+机器上已经有 `.minecraft`（官方启动器 / PCL / HMCL 装的）？直接接管：
+
+```sh
+mcli instance scan                           # 列出 versions/ 下的全部版本，含未注册的
+mcli instance import "26.3-Fabric 0.20.1"    # 接管其中一个，文件与存档都留在原处
+mcli launch "26.3-Fabric 0.20.1"             # 跑现成的整合包；mcli 不负责安装加载器
 ```
 
 日常用法：
@@ -60,8 +71,9 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 
 | 命令 | 作用 |
 |---|---|
-| `mcli login [--flow browser\|device] [--label <名称>] [--no-browser] [--timeout <秒>]` | 登录微软账号（默认浏览器流程） |
-| `mcli logout [<账号>] [--all]` | 清除已保存凭证 |
+| `mcli login [--flow browser\|device] [--label <名称>] [--no-browser] [--no-switch] [--timeout <秒>]` | 登录微软账号（默认浏览器流程）；--no-switch 只添加账号、不改默认账号 |
+| `mcli logout [<账号>] [--all]` | 清除凭证（账号信息与两个令牌文件一起清） |
+| `mcli account [list \| use <名称\|UUID\|标签> \| remove <名称>]` | 查看与切换已登录账号 |
 | `mcli list [--instances] [--accounts] [--available] [--type <类型>] [--search <文本>] [--limit N]` | 列出实例、账号或可下载版本 |
 | `mcli create <名称> --version <版本>|latest|latest-snapshot [--java <路径>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...] [--force]` | 创建实例 |
 | `mcli instance [list]` | 列出实例：版本、Java、就绪状态、上次启动、游戏目录 |
@@ -69,11 +81,13 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli instance set <名称> [--version <版本>] [--java <路径>|auto] [--xmx 4G|auto] [--xms 1G|auto] [--jvm-arg ...] [--game-arg ...] [--clear-jvm-args] [--clear-game-args]` | 修改实例设置 |
 | `mcli instance copy <源> <目标> [--with-files]` | 复制实例（可连存档一起） |
 | `mcli instance rename <旧名> <新名>` | 实例改名，游戏目录一起搬 |
+| `mcli instance scan [--all]` | 列出磁盘上的版本目录：类型、JSON/JAR、父版本、是否已注册 |
+| `mcli instance import <版本> [--as <名称>] [--force]` | 接管已有安装（官方启动器 / PCL / HMCL / 整合包） |
 | `mcli delete <名称> [--keep-files] [--yes]` | 删除实例（连同存档） |
 | `mcli launch <名称>|<版本>|--last [--version <版本>] [--java <路径>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <账号>]` | 按需安装并启动 |
 | `mcli refresh [--versions] [--all]` | 强制刷新已缓存元数据 |
 | `mcli config [get\|set\|unset\|list\|path]` | 读写设置 |
-| `mcli java [list \| install <major> \| which <版本>]` | 查看或安装 Java |
+| `mcli java [list \| install <major> [--force] \| which <版本>]` | 查看或安装 Java（--force 重装没装完的运行时） |
 | `mcli version`、`mcli help [命令]` | 版本与帮助 |
 
 全局选项可写在任意位置：`--lang <auto\|en\|zh>`、`--config <路径>`、`--yes`
@@ -81,13 +95,16 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 
 ## 配置项
 
-`mcli config list` 会带中文说明列出全部。mcli 在 `~/.mcl-cli/` 里放三个小 TOML 文件：
+`mcli config list` 会带中文说明列出全部；`mcli config path` 打印每个文件的位置。
+mcli 在 `~/.mcl-cli/` 里放五个小 TOML 文件：
 
 | 文件 | 内容 | 说明 |
 |---|---|---|
 | `mcli.toml` | 配置表 | 可手工编辑；`config set` 只改一行，注释与顺序保留；可跨机器使用 |
-| `state.toml` | 账号、实例、清单缓存指针 | 机器状态（0600），令牌加密存放 |
-| `last.toml` | 上次启动参数 | 刻意很小，`launch --last` 不必读配置与状态 |
+| `state.toml` | 账号（只有身份信息）、实例、清单缓存指针 | 机器状态（0600），不含任何密钥，可以随便拷 |
+| `refresh.toml` | 每个账号的长期刷新令牌及其 salt | 0600；登录时写入，可当密码一样备份 |
+| `session.toml` | 短期 MC 会话令牌与过期时间 | 0600；每次刷新都会重写，删掉也没事（会用 refresh.toml 重新换） |
+| `last.toml` | 上次启动参数 | 刻意很小，`launch --last` 不必读别的文件 |
 
 | 键 | 默认值 | 说明 |
 |---|---|---|
@@ -120,7 +137,9 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 ```
 ~/.mcl-cli/                 与其它启动器不共享的状态
 ├─ mcli.toml                配置表（可手改的 TOML）
-├─ state.toml               账号、实例、清单指针（0600）
+├─ state.toml               账号身份、实例、清单指针（0600，无密钥）
+├─ refresh.toml             长期刷新令牌（每账号一条，0600）
+├─ session.toml             短期会话令牌与过期时间（0600）
 ├─ last.toml                上次启动参数，供 mcli launch --last
 ├─ jdk/<component>/         mcli 安装的 Java 运行时
 ├─ cache/                   缓存的版本清单（原始 JSON）
@@ -133,23 +152,29 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
    └─ versions/{实例}/        实例自己的游戏目录（saves、options.txt 等）
 ```
 
-拆成三个文件是刻意的：TOML 由 `internal/toml` 自己读写（零依赖），文件名与格式
-一致，配置本来就是给人改的，上次启动参数单独放一个小文件（理由见
-`docs/design-decisions.md`）。
+拆成五个文件是刻意的：TOML 由 `internal/toml` 自己读写（零依赖），文件名与格式
+一致，配置本来就是给人改的，上次启动参数单独放一个小文件；最重要的是凭证不跟
+"每次都会重写的东西" 待在同一个文件里（理由见 `docs/design-decisions.md`）。
 
 ## 账号与安全
 
-只支持微软账号。`mcli login` 会打开微软授权页（如果你的 client id 支持设备码，
-可用 `--flow device` 切换），密码不会经过 mcli。令牌用 AES-256-GCM 加密，密钥由
-本机标识 + **每个账号自己的 salt**（存在该账号条目里）经 PBKDF2-SHA256（20 万次）
-派生——不依赖系统密钥链，账号条目拷到别的机器也解不开；而配置、实例、上次启动
-参数都不含密钥，可直接跨机器使用。
+只支持微软账号，但可以同时存很多个：再登录一次（可加 `--no-switch` 只添加不改默认），
+`mcli account list` 全部列出，`use` 切换默认账号，`mcli launch <实例> --account <名称>`
+只对这一次生效。`mcli login` 会打开微软授权页（如果你的 client id 支持设备码，可用
+`--flow device` 切换），密码不会经过 mcli。
+
+令牌用 AES-256-GCM 加密，密钥由本机标识 + **每个账号自己的 salt**（与账号一起存放）
+经 PBKDF2-SHA256（20 万次）派生：长期刷新令牌在 `refresh.toml`，短期 MC 令牌在
+`session.toml`，都是 0600。账号列表与密钥文件分开，所以令牌文件缺失或来自别的机器时
+`mcli account list` 照样能用。不依赖系统密钥链，账号条目拷到别的机器也解不开；配置、
+实例、上次启动参数都不含密钥，可直接跨机器使用。
 
 ## 镜像行为
 
-每个下载都是一个有序候选列表：BMCLAPI 在前（若已配置），官方地址兜底。
-某个候选失败、卡住或 SHA-1 不符就换下一个；整轮失败后按
-`download_retry_times` 重试。已实测的映射：
+每个下载都是一个有序候选列表：BMCLAPI 在前（若已配置），官方地址兜底。某个候选失败、
+卡住或 SHA-1 不符就换下一个；整轮失败后按 `download_retry_times` 重试。同一个源连续失败
+三次会被降到最后（不删除——只能连镜像的网络照样要能装上），并在日志里说明一次。
+已实测的映射：
 
 | 官方 | BMCLAPI |
 |---|---|

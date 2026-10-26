@@ -2,31 +2,42 @@
 
 Each entry: the decision, why, and what it costs. Written to be argued with.
 
-## TOML instead of a database — and three files instead of one
+## TOML instead of a database — and five files instead of one
 
 The requirement asks for "config in `.mcl-cli/mcli.db`, with a `config` table".
 A file called `.db` that is not a database is a trap for anyone who later opens
 it with `sqlite3`; real SQLite would mean a heavy cgo-free driver
 (`modernc.org/sqlite`) or cgo, against this project's zero-dependency rule.
 TOML satisfies both constraints: readable, format-accurate file names, and a
-parser/writer we can own (`internal/toml`, ~450 lines including tests).
+parser/writer we can own (`internal/toml`, ~1000 lines including tests).
 
-The document is split three ways because the three parts have different
-owners and lifecycles:
+The documents are split on ownership and lifecycle:
 
 * `mcli.toml` — the user's. It must survive an editor session, so writes are
   line-level patches (`toml.SetKeyInSection`) that keep comments, ordering and
   unknown keys intact instead of re-serialising the struct.
-* `state.toml` — mcli's. Accounts, instances and the manifest pointer change on
-  every other command, so it is rewritten wholesale; it is where the only secret
-  material lives.
+* `state.toml` — mcli's. Accounts (identity only), instances and the manifest
+  pointer change on every other command, so it is rewritten wholesale. It holds
+  no secrets, which means it is safe to copy, sync or paste when asking for help.
+* `refresh.toml` / `session.toml` — the credentials, deliberately in two files.
+  A Microsoft refresh token is long-lived and worth protecting; a Minecraft
+  access token dies in a few hours. Splitting them means (a) the file worth
+  backing up like a password changes rarely instead of hourly, (b) deleting
+  `session.toml` forces a fresh Minecraft token without touching the login, and
+  (c) a token leak has an obvious blast radius — the short-lived file alone is
+  worthless. Cost: one more file to document and one more `SaveTokens` call at
+  the end of a login. Worth it for the security-shaped separation.
 * `last.toml` — the previous launch. `mcli launch --last` should not have to
   parse a configuration to replay flags, so those ~15 values get their own tiny
   file.
 
-Cost: three files instead of one, and a `--config <path>` override only moves
-the config (state and last derive from its directory). Both are documented in
-the README.
+Migration is one-way and quiet: a legacy JSON `mcli.db` (db_version 1) is
+imported, a v2 `state.toml` has its inline tokens moved into the two credential
+files, and the moved keys disappear from `state.toml`. `db_version` records the
+shape so a newer mcli's file is reported instead of misread.
+
+Cost: five files instead of one, and a `--config <path>` override only moves the
+config (the rest derive from its directory). Both are documented in the README.
 
 ## One salt per account, not one per machine
 
@@ -53,6 +64,49 @@ README documents the layout explicitly.
 Cost: a version directory and an instance directory can collide in name if the
 user names an instance exactly like a version id. The launcher warns/overrides
 through the normal instance lookup in that case.
+
+## Taking over installs made by other launchers
+
+A launcher that cannot see the `.minecraft` it lands on is not usable, so
+`instance scan` / `instance import` adopt existing version directories instead of
+asking the user to reinstall 700 MB. Two consequences shaped the code:
+
+* Instance names accept spaces and CJK, because `26.3-Fabric 0.20.1` is the name
+  a real PCL profile has on disk. Path separators, Windows-forbidden characters
+  and reserved device names are still refused, and so is a trailing dot.
+* Natives are unpacked where the version's own arguments point
+  (`natives/jna`, `natives/lwjgl`, `natives/netty`, `natives/java`), not just in
+  the base directory. Modern Minecraft libraries (LWJGL, JNA, Netty) extract
+  themselves from the classpath at run time, but only into a directory that the
+  JSON names — so the launcher must create exactly those directories and put the
+  pre-extracted files where a legacy `java.library.path` expects them.
+
+mcli still does not *install* Fabric, Forge or any other loader: it runs what
+already exists. Mod loading stays out of scope, which is different from refusing
+to launch a modded install.
+
+## A failing mirror is demoted, not disabled
+
+The mirror is tried first for every file, which is right when it works and
+expensive when the redirector stalls: a Java runtime is ~700 small files and each
+stall costs a watchdog timeout. `dl.SourceHealth` counts consecutive failures per
+source and, after three, moves the official source to the front for the rest of
+the run. The mirror stays in the list, because a network that can only reach the
+mirror still has to install.
+
+Cost: one heuristic with a threshold nobody can prove is optimal. It is logged
+once when it triggers ("… keeps failing; the other sources are tried first"),
+so a surprising fallback is visible rather than silent.
+
+## Multiple accounts, one active
+
+Accounts are keyed by Minecraft UUID, never by name: the same player can rename,
+and two accounts can share a name across regions. `mcli account list` shows
+everything stored, `account use` switches, `launch --account <name|uuid|label>`
+overrides for a single run, and `login --no-switch` adds an account without
+moving the default away from the one in use. Identity and credentials are in
+different files, so the account list always renders even when a token file is
+missing or was encrypted on another machine.
 
 ## Java runtimes come from Mojang's product manifest
 

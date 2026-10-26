@@ -17,12 +17,14 @@ interactive wizard: everything is a flag.
 | Downloads | BMCLAPI mirror first, automatic fallback to the official Mojang source, SHA-1 verification, retries, large-download confirmation |
 | Versions | release / snapshot / old_beta / old_alpha, manifest cache with TTL, `inheritsFrom` merging, legacy `minecraftArguments` support |
 | Java | finds local runtimes (PATH, `JAVA_HOME`, distro dirs, `~/.minecraft/runtime`, mcli's own `jdk/`), matches the major version a version needs, can install a runtime from Mojang's mirrored product manifest |
-| Instances | multiple named instances, each with its own game directory, JVM args and memory settings; libraries/assets/versions are shared; edit, clone and rename them later with `mcli instance` |
-| Interface | English and Simplified Chinese, `--lang auto\|en\|zh` |
+| Instances | multiple named instances, each with its own game directory, JVM args and memory settings; libraries/assets/versions are shared; edit, clone and rename them later with `mcli instance`, and adopt a `.minecraft` that another launcher already filled (`instance scan` / `instance import`) |
+| Accounts | several Microsoft accounts at once: `mcli account list` shows them, `use` switches, `launch --account` overrides per run; refresh token and Minecraft token live in two separately encrypted files |
+| Interface | English and Simplified Chinese, `--lang auto\|en\|zh`; tables pad by display width so a CJK path does not shift the columns |
 | Logs | concise terminal output, full log file under `~/.mcl-cli/logs/` |
 
-Not implemented on purpose: Fabric/Forge/Quilt, mod or resource-pack management,
-offline accounts, GUI.
+Not implemented on purpose: installing Fabric/Forge/Quilt, mod or resource-pack
+management, offline accounts, GUI. Running an existing modded profile (as
+installed by PCL, HMCL or the official launcher) *is* supported.
 
 ## Install
 
@@ -39,9 +41,18 @@ Optionally `install -m755 mcli /usr/local/bin/mcli`.
 
 ```sh
 mcli login                                   # opens your browser (use --flow device for a code)
+mcli account list                            # who is logged in, and which account is active
 mcli list --available --limit 10             # what can be installed
 mcli create vanilla --version latest         # isolated instance (latest | latest-snapshot | a version id)
 mcli launch vanilla                          # installs what is missing, then starts the game
+```
+
+Already have a `.minecraft` (the official launcher, PCL, HMCL)? Adopt it:
+
+```sh
+mcli instance scan                           # every versions/<id> on disk, registered or not
+mcli instance import "26.3-Fabric 0.20.1"    # take one over, files and saves stay put
+mcli launch "26.3-Fabric 0.20.1"             # runs what is there; mcli never installs loaders
 ```
 
 Everyday use:
@@ -62,8 +73,9 @@ mcli java which 1.21.4                        # which Java this version needs / 
 
 | Command | Purpose |
 |---|---|
-| `mcli login [--flow browser\|device] [--label <name>] [--no-browser] [--timeout <sec>]` | Microsoft login (browser flow by default) |
-| `mcli logout [<account>] [--all]` | remove stored credentials |
+| `mcli login [--flow browser\|device] [--label <name>] [--no-browser] [--no-switch] [--timeout <sec>]` | Microsoft login (browser flow by default); `--no-switch` adds an account without making it the default |
+| `mcli logout [<account>] [--all]` | remove stored credentials (identity and both token files) |
+| `mcli account [list \| use <name\|uuid\|label> \| remove <name>]` | show and switch the logged-in accounts |
 | `mcli list [--instances] [--accounts] [--available] [--type <t>] [--search <text>] [--limit N]` | instances, accounts or downloadable versions |
 | `mcli create <name> --version <v>|latest|latest-snapshot [--java <path>] [--xmx 4G] [--xms 1G] [--jvm-arg ...] [--game-arg ...] [--force]` | create an instance |
 | `mcli instance [list]` | instances with version, java, readiness, last played, game dir |
@@ -71,11 +83,13 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli instance set <name> [--version <v>] [--java <path>|auto] [--xmx 4G|auto] [--xms 1G|auto] [--jvm-arg ...] [--game-arg ...] [--clear-jvm-args] [--clear-game-args]` | change an instance's settings |
 | `mcli instance copy <src> <dst> [--with-files]` | clone an instance (optionally its saves) |
 | `mcli instance rename <old> <new>` | rename an instance and its game directory |
+| `mcli instance scan [--all]` | version directories found on disk, with their type, jar, parent and instance |
+| `mcli instance import <version> [--as <name>] [--force]` | adopt an existing install (official launcher, PCL, HMCL, a modded profile) |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance (and its saves) |
 | `mcli launch <name>|<version>|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
 | `mcli refresh [--versions] [--all]` | force-refresh cached metadata |
 | `mcli config [get\|set\|unset\|list\|path]` | read or change settings |
-| `mcli java [list \| install <major> \| which <version>]` | inspect or install Java runtimes |
+| `mcli java [list \| install <major> [--force] \| which <version>]` | inspect or install Java runtimes (`--force` reinstalls an incomplete one) |
 | `mcli version`, `mcli help [command]` | self-explanatory |
 
 Global options accepted anywhere: `--lang <auto\|en\|zh>`, `--config <path>`,
@@ -83,14 +97,16 @@ Global options accepted anywhere: `--lang <auto\|en\|zh>`, `--config <path>`,
 
 ## Configuration
 
-`mcli config list` shows everything with descriptions. mcli keeps three small
-TOML documents in `~/.mcl-cli/`:
+`mcli config list` shows everything with descriptions; `mcli config path` prints
+where each file lives. mcli keeps five small TOML documents in `~/.mcl-cli/`:
 
 | File | Contents | Notes |
 |---|---|---|
 | `mcli.toml` | the config table | hand-editable; `config set` patches one line, so your comments and ordering survive; portable between machines |
-| `state.toml` | accounts, instances, manifest-cache pointer | machine state (0600); tokens are encrypted |
-| `last.toml` | the previous launch | deliberately tiny, so `launch --last` never reads the config or state |
+| `state.toml` | accounts (identity only), instances, manifest-cache pointer | machine state (0600); carries no secrets, so it is safe to copy |
+| `refresh.toml` | the long-lived refresh token per account, plus its key salt | 0600; written at login and when Microsoft rotates the token — back it up like a password |
+| `session.toml` | the short-lived Minecraft access token and its expiry | 0600; rewritten on every token refresh, safe to delete (a new one is minted from `refresh.toml`) |
+| `last.toml` | the previous launch | deliberately tiny, so `launch --last` never reads anything else |
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -124,6 +140,8 @@ Environment overrides: `MCLI_HOME` (default `~/.mcl-cli`), `MCLI_MINECRAFT`
 ~/.mcl-cli/                 state that is not shared with other launchers
 ├─ mcli.toml                configuration table (hand-editable TOML)
 ├─ state.toml               accounts, instances, manifest pointer (0600)
+├─ refresh.toml             long-lived refresh tokens per account (0600)
+├─ session.toml             short-lived Minecraft tokens + expiry (0600)
 ├─ last.toml                previous launch, for `mcli launch --last`
 ├─ jdk/<component>/         Java runtimes installed by mcli
 ├─ cache/                   cached version manifest (raw JSON)
@@ -138,26 +156,38 @@ Environment overrides: `MCLI_HOME` (default `~/.mcl-cli`), `MCLI_MINECRAFT`
 
 Splitting the documents is deliberate: TOML is written and parsed by
 `internal/toml` (no dependency), the file name always matches its format, the
-config is meant to be opened in an editor, and the previous launch lives in its
-own tiny file (see `docs/design-decisions.md`).
+config is meant to be opened in an editor, the previous launch lives in its own
+tiny file, and — most importantly — the credentials never share a file with
+something mcli rewrites constantly (see `docs/design-decisions.md`).
 
 ## Accounts and security
 
-Only Microsoft accounts are supported. `mcli login` opens the Microsoft
-authorize page (`--flow device` switches to the device-code flow if your client
-id supports it); no password ever reaches mcli. Tokens are encrypted with
-AES-256-GCM under a key derived (PBKDF2-SHA256, 200k iterations) from this
-machine's identifiers **plus a per-account salt stored with that account** — no
-OS keychain, and an account entry copied to another machine cannot be
-decrypted. Everything else (config, instances, last launch) carries no secrets
-and works on any machine.
+Only Microsoft accounts are supported, and any number of them at once: log in
+again (optionally `--no-switch`), then `mcli account list` shows them all, `use`
+picks the default and `mcli launch <instance> --account <name>` overrides it for
+one run. `mcli login` opens the Microsoft authorize page (`--flow device`
+switches to the device-code flow if your client id supports it); no password ever
+reaches mcli.
+
+Tokens are encrypted with AES-256-GCM under a key derived (PBKDF2-SHA256, 200k
+iterations) from this machine's identifiers **plus a per-account salt stored with
+that account**. The long-lived refresh token lives in `refresh.toml` and the
+short-lived Minecraft token in `session.toml`, both 0600: tokens are never in the
+same file as the instance list, so the files worth backing up are also the files
+that change least. There is no OS keychain, an account entry copied to another
+machine cannot be decrypted, and `mcli account list` still works without them.
+Everything else (config, instances, last launch) carries no secrets at all and
+works on any machine.
 
 ## Mirror behaviour
 
 Every download is expressed as an ordered candidate list: BMCLAPI first (when
 configured), the official Mojang URL last. A candidate that fails, stalls or
 returns a wrong SHA-1 is abandoned for the next one; the whole list is retried
-`download_retry_times` times. Verified mappings:
+`download_retry_times` times. When one source fails three times in a row it is
+demoted to the end of the list for the rest of the run (it is never dropped, so a
+network that can only reach the mirror still installs), and that decision is
+logged once. Verified mappings:
 
 | Official | BMCLAPI |
 |---|---|

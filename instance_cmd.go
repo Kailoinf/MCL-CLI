@@ -39,6 +39,10 @@ func (a *App) cmdInstance(args []string) int {
 		return a.instanceCopy(rest)
 	case "rename", "mv":
 		return a.instanceRename(rest)
+	case "scan", "ls-versions", "available":
+		return a.instanceScan(rest)
+	case "import", "adopt", "take":
+		return a.instanceImport(rest)
 	case "help", "--help":
 		a.Log.Printf("%s", i18n.T("cli.cmd.instance.usage"))
 		return 0
@@ -53,7 +57,9 @@ func (a *App) instanceList() int {
 		a.Log.Printf("%s", i18n.T("inst.no_instances"))
 		return 0
 	}
-	a.Log.Printf("%s", i18n.T("inst.list_header", "NAME", "VERSION", "JAVA", "STATE", "LAST PLAYED", "GAME DIR"))
+	a.Log.Printf("%s", i18n.T("inst.list_header",
+		padRight("NAME", 20), padRight("VERSION", 20), padRight("JAVA", 12),
+		padRight("STATE", 11), padRight("LAST PLAYED", 20), "GAME DIR"))
 	for _, n := range names {
 		inst := a.DB.Data.Instances[n]
 		jv := inst.Java
@@ -68,10 +74,39 @@ func (a *App) instanceList() int {
 		if version == "" {
 			version = "-"
 		}
-		a.Log.Printf("%s", i18n.T("inst.list_row", inst.Name, version, jv,
-			a.instanceState(n), played, a.instanceDir(n)))
+		a.Log.Printf("%s", i18n.T("inst.list_row",
+			padRight(inst.Name, 20), padRight(version, 20), padRight(jv, 12),
+			padRight(a.instanceState(n), 11), padRight(played, 20), a.instanceDir(n)))
 	}
+	a.reportUnregistered(names)
 	return 0
+}
+
+// reportUnregistered nudges the user about version directories that exist on
+// disk (an official-launcher or PCL install, a modded profile) but are not
+// registered as instances yet. Without this, mcli looks empty right next to a
+// full .minecraft.
+func (a *App) reportUnregistered(registered []string) {
+	disk, err := a.scanDisk()
+	if err != nil {
+		return
+	}
+	known := map[string]bool{}
+	for _, n := range registered {
+		known[n] = true
+		if inst, ok := a.DB.GetInstance(n); ok {
+			known[inst.Version] = true
+		}
+	}
+	n := 0
+	for _, d := range disk {
+		if !known[d.ID] && d.HasJSON {
+			n++
+		}
+	}
+	if n > 0 {
+		a.Log.Printf("%s", i18n.T("inst.external_hint", n, a.VersionsDir()))
+	}
 }
 
 // instanceState gives a cheap readiness estimate that never touches the
@@ -128,7 +163,7 @@ func (a *App) instanceShow(args []string) int {
 	dir := a.instanceDir(name)
 
 	row := func(label, value string) {
-		a.Log.Printf("%s", i18n.T("inst.show_row", i18n.T(label), value))
+		a.Log.Printf("%s", i18n.T("inst.show_row", padRight(i18n.T(label), 14), value))
 	}
 	row("inst.field.name", inst.Name)
 	row("inst.field.version", dash(inst.Version))
@@ -362,8 +397,8 @@ func (a *App) instanceCopy(args []string) int {
 	if !ok {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", src)))
 	}
-	if !instanceNameRe.MatchString(dst) {
-		return a.fatal(fmt.Errorf("%s", i18n.T("inst.bad_name", dst)))
+	if err := validateInstanceName(dst); err != nil {
+		return a.fatal(err)
 	}
 	if _, exists := a.DB.GetInstance(dst); exists {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.exists", dst)))
@@ -447,8 +482,8 @@ func (a *App) instanceRename(args []string) int {
 	if !ok {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", oldName)))
 	}
-	if !instanceNameRe.MatchString(newName) {
-		return a.fatal(fmt.Errorf("%s", i18n.T("inst.bad_name", newName)))
+	if err := validateInstanceName(newName); err != nil {
+		return a.fatal(err)
 	}
 	if _, exists := a.DB.GetInstance(newName); exists {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.exists", newName)))

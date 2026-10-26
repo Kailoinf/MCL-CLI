@@ -1,4 +1,4 @@
-// Package config holds the mcli/config "table" stored inside mcli.db and the
+// Package config holds the mcli/config "table" stored inside mcli.toml and the
 // key/value plumbing used by `mcli config get|set|unset|list`.
 //
 // Every human-readable description is an i18n key (see internal/i18n), so the
@@ -126,7 +126,7 @@ func (c *Config) RawValue(key string) (interface{}, error) {
 }
 
 // FillMissing restores defaults for fields left empty. After unmarshalling an
-// older mcli.db, keys that did not exist yet arrive as zero values; this puts
+// older mcli.toml, keys that did not exist yet arrive as zero values; this puts
 // the defaults back. Empty strings are only refilled when the default is
 // non-empty, so an intentionally blank key (e.g. java_path) stays blank.
 func (c *Config) FillMissing() {
@@ -286,8 +286,8 @@ func validateInt(key string, n int) error {
 	return nil
 }
 
-// Validate checks cross-field sanity before mcli.db is written. It also
-// re-checks numeric ranges so a hand-edited mcli.db cannot smuggle in values
+// Validate checks cross-field sanity before mcli.toml is written. It also
+// re-checks numeric ranges so a hand-edited mcli.toml cannot smuggle in values
 // the CLI would have rejected.
 func (c *Config) Validate() error {
 	for _, k := range []string{"download_retry_times", "http_timeout", "manifest_ttl_hours", "auto_memory_percent", "large_download_mb"} {

@@ -372,6 +372,8 @@ type Installer struct {
 	DestRoot string
 	// Workers is the parallel download count.
 	Workers int
+	// Force reinstalls a runtime from scratch instead of completing it.
+	Force bool
 	// Confirm is asked once before the (large) runtime download.
 	Confirm func(desc string, files int, total int64) (bool, error)
 }
@@ -439,6 +441,22 @@ func PlatformKey() (string, bool) {
 // Install ensures the runtime for a component exists under DestRoot and returns
 // the java executable path. When the component is unknown for this platform it
 // returns an error the CLI turns into an offer to use a local runtime.
+// installMarker records a completed runtime install inside its directory. It
+// exists because an interrupted download leaves bin/java on disk: without this
+// marker an incomplete runtime would look installed forever (and the launcher
+// would keep failing with a confusing error instead of finishing the job).
+const installMarker = ".mcli-ok"
+
+// runtimeComplete reports whether a runtime directory holds a finished install.
+func runtimeComplete(exe string) bool {
+	st, err := os.Stat(exe)
+	if err != nil || st.IsDir() {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(filepath.Dir(filepath.Dir(exe)), installMarker))
+	return err == nil
+}
+
 func (in Installer) Install(component string, need int) (string, error) {
 	platform, ok := PlatformKey()
 	if !ok {
@@ -449,8 +467,17 @@ func (in Installer) Install(component string, need int) (string, error) {
 	}
 	dest := filepath.Join(in.DestRoot, component)
 	exe := filepath.Join(dest, "bin", javaExe())
-	if st, err := os.Stat(exe); err == nil && !st.IsDir() {
+	if runtimeComplete(exe) {
 		return exe, nil
+	}
+	if in.Force {
+		in.log().Infof("%s", i18n.T("java.forced", component))
+		if err := os.RemoveAll(dest); err != nil {
+			return "", err
+		}
+	}
+	if _, err := os.Stat(exe); err == nil {
+		in.log().Warnf("%s", i18n.T("java.partial", dest))
 	}
 
 	if err := os.MkdirAll(in.DestRoot, 0o755); err != nil {
@@ -475,7 +502,11 @@ func (in Installer) Install(component string, need int) (string, error) {
 		entries = plat[component]
 		dest = filepath.Join(in.DestRoot, component)
 		exe = filepath.Join(dest, "bin", javaExe())
+		if runtimeComplete(exe) {
+			return exe, nil
+		}
 	}
+	marker := filepath.Join(dest, installMarker)
 
 	version := entries[0].Version.Name
 	in.log().Infof("%s", i18n.T("java.downloading", need, version))
@@ -513,6 +544,17 @@ func (in Installer) Install(component string, need int) (string, error) {
 	if st, err := os.Stat(exe); err != nil || st.IsDir() {
 		return "", fmt.Errorf("%s", i18n.T("java.install_failed", "java executable missing after extraction"))
 	}
+	// Prove the runtime actually runs before calling it installed, and only then
+	// leave the marker that makes the next call a no-op.
+	rt, err := Probe(exe, "mcli")
+	if err != nil {
+		return "", fmt.Errorf("%s", i18n.T("java.install_failed", err))
+	}
+	if err := os.WriteFile(marker, []byte(fmt.Sprintf("component=%s\nversion=%s\ninstalled=%s\n",
+		component, version, time.Now().UTC().Format(time.RFC3339))), 0o644); err != nil {
+		in.log().Warnf("%s", err)
+	}
+	in.log().Infof("%s", i18n.T("java.verified", rt.Version))
 	in.log().Infof("%s", i18n.T("java.extracted", need, dest))
 	return exe, nil
 }

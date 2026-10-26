@@ -3,15 +3,17 @@
 ## Layers
 
 ```
-CLI (main.go, flags.go, commands.go, launch_cmd.go, app.go)
+CLI (main.go, flags.go, commands.go, instance_cmd.go, instance_import.go,
+     account_cmd.go, launch_cmd.go, app.go, table.go)
  │  argv parsing, i18n setup, prompting, process spawn
  ├─ internal/mcv      version metadata and file installation
  ├─ internal/java     runtime discovery / installation
  ├─ internal/launch   command line assembly
  ├─ internal/auth     Microsoft → Xbox Live → Minecraft
- ├─ internal/dl       transport: candidate lists, retries, checksums, progress
+ ├─ internal/dl       transport: candidate lists, retries, checksums, progress,
+ │                    source health
  ├─ internal/mirror   URL mapping (BMCLAPI ↔ official)
- ├─ internal/store    mcli.db persistence
+ ├─ internal/store    the TOML documents (config, state, credentials, last)
  ├─ internal/config   config table schema + validation
  ├─ internal/secret   token encryption
  ├─ internal/paths    directory layout
@@ -55,7 +57,7 @@ mcli launch <instance>
 * `libraries/` and `assets/` are shared by all versions, exactly like the
   official launcher.
 
-## The three documents in ~/.mcl-cli
+## The five documents in ~/.mcl-cli
 
 All TOML, parsed and written by `internal/toml` (no dependency), always written
 atomically (`.tmp` + rename):
@@ -66,19 +68,52 @@ mcli.toml       [config]        ← the config table (see internal/config)
                 comments, ordering and extra keys survive; no secrets, so it is
                 portable between machines
 
-state.toml      db_version      machine-owned (0600)
-                accounts{}      ← keyed by Minecraft UUID; each entry carries
-                                  its own token_salt plus AES-GCM encrypted tokens
+state.toml      db_version      machine-owned, 0600, no secrets → portable
+                accounts{}      ← keyed by Minecraft UUID: name, xuid, label,
+                                  active flag, timestamps (identity only)
                 instances{}     ← name → {version, per-instance java/xmx/xms/args}
                 manifest_cache{}← which source served the manifest, when, and the
                                   path of the cached body
 
+refresh.toml    tokens{}        ← keyed by account UUID: the long-lived refresh
+                (0600)            token plus the salt its key derives from.
+                                  Rewritten at login (not on every token refresh)
+
+session.toml    sessions{}      ← keyed by account UUID: the short-lived
+                (0600)            Minecraft access token and its expiry
+
 last.toml       the previous launch (instance, version, java, xmx/xms, window
                 size, jvm/game args, game dir) — tiny on purpose: `launch --last`
-                never has to read mcli.toml or state.toml
+                never has to read any other document
 
 cache/version_manifest_v2.json   the raw manifest body, exactly as downloaded
 ```
+
+`db_version` is 3: 1 was the pre-TOML JSON database (imported once), 2 moved it
+into TOML, 3 split the credentials out of `state.toml`.
+
+## Taking over an existing .minecraft
+
+`mcli instance scan` lists every `versions/<id>/` directory on disk, and
+`mcli instance import <id>` registers one as an instance. Nothing is moved: the
+version files stay where they are, and because mcli uses `versions/<instance>/`
+as the game directory, a profile directory laid out by another launcher keeps its
+saves, options and mods.
+
+Two properties of other launchers' output matter here:
+
+* **Flattened profiles.** PCL writes a modded profile as a single version JSON
+  with `arguments`, `libraries`, `downloads.client` and `javaVersion` all copied
+  in, and no `inheritsFrom`. Such a document works as-is. When a profile *does*
+  inherit, `mcv.ClientJarTarget` decides which client jar it runs: an explicit
+  `jar` field first, then a jar already sitting in the version's own directory
+  (PCL and HMCL copy the vanilla jar into profile directories), then the parent.
+* **Natives subdirectories.** Modern JSONs (and every flattened profile) point
+  JNA, LWJGL and Netty at their own directory under `natives/` and give
+  `java.library.path` a separate one, because those libraries unpack their native
+  code from the classpath at run time. `mcv.Version.NativesTargets` reads those
+  arguments, creates the directories, and `nativeDirsFor` unpacks each natives jar
+  into the base directory plus the family subdirectory the version asks for.
 
 ## Error handling style
 
@@ -95,3 +130,9 @@ reader that cancels a request when no bytes arrive for 20 seconds (the BMCLAPI
 redirect nodes do stall). Verification is SHA-1 + size; the destination is only
 written after verification succeeds, so a killed download cannot leave a
 poisoned file in the shared cache.
+
+`dl.SourceHealth` is shared by every policy in one run: three failures of the
+same source demote it to the end of the candidate list for the rest of the run
+(never removed — a network that can only reach the mirror still gets its files).
+That is what keeps a 700-file Java runtime install from paying a stall timeout
+per file.

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +25,7 @@ func (a *App) cmdLogin(args []string) int {
 		"timeout":    {takesValue: true},
 		"flow":       {takesValue: true},
 		"no-browser": {},
+		"no-switch":  {},
 	})
 	if err != nil {
 		return a.fatal(err)
@@ -80,13 +80,28 @@ func (a *App) cmdLogin(args []string) int {
 		}
 		acc = &store.Account{}
 	}
+	// Remember who was active so --no-switch can put them back: adding a second
+	// account should not silently move every later launch onto it.
+	previous := a.DB.ActiveAccount()
 	a.Log.Infof("%s", i18n.T("auth.storing"))
 	if err := a.storeSession(acc, sess, f.str("label", "")); err != nil {
 		return a.fatal(err)
 	}
+	if f.boolean("no-switch") && previous != nil && previous.UUID != acc.UUID {
+		a.DB.SetActive(previous.UUID)
+		if err := a.DB.Save(); err != nil {
+			return a.fatal(err)
+		}
+	}
 	a.Log.Printf("%s", i18n.T("auth.logged_in", sess.Profile.Name, sess.Profile.ID))
-	a.Log.Printf("%s", i18n.T("auth.saved", a.DB.Path))
+	a.Log.Printf("%s", i18n.T("auth.saved_identity", a.DB.StatePath))
+	a.Log.Printf("%s", i18n.T("auth.saved_refresh", a.DB.RefreshPath))
+	a.Log.Printf("%s", i18n.T("auth.saved_session", a.DB.SessionPath))
 	a.Log.Printf("%s", i18n.T("auth.expires", sess.MC.ExpiresAt.Format(time.RFC3339)))
+	if f.boolean("no-switch") && previous != nil && previous.UUID != acc.UUID {
+		a.Log.Printf("%s", i18n.T("auth.active_kept", previous.Name))
+	}
+	a.Log.Printf("%s", i18n.T("auth.accounts_count", len(a.DB.Data.Accounts)))
 	return 0
 }
 
@@ -115,14 +130,18 @@ func (a *App) cmdLogout(args []string) int {
 		names := make([]string, 0, len(a.DB.Data.Accounts))
 		for uuid, acc := range a.DB.Data.Accounts {
 			names = append(names, acc.Name)
-			delete(a.DB.Data.Accounts, uuid)
+			a.DB.DropAccount(uuid)
 		}
 		if err := a.DB.Save(); err != nil {
+			return a.fatal(err)
+		}
+		if err := a.DB.SaveTokens(); err != nil {
 			return a.fatal(err)
 		}
 		for _, n := range names {
 			a.Log.Printf("%s", i18n.T("auth.logout_done", n))
 		}
+		a.Log.Printf("%s", i18n.T("auth.logout_tokens", a.DB.RefreshPath, a.DB.SessionPath))
 		return 0
 	}
 
@@ -138,11 +157,15 @@ func (a *App) cmdLogout(args []string) int {
 		}
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.not_found", target)))
 	}
-	delete(a.DB.Data.Accounts, acc.UUID)
+	a.DB.DropAccount(acc.UUID)
 	if err := a.DB.Save(); err != nil {
 		return a.fatal(err)
 	}
+	if err := a.DB.SaveTokens(); err != nil {
+		return a.fatal(err)
+	}
 	a.Log.Printf("%s", i18n.T("auth.logout_done", acc.Name))
+	a.Log.Printf("%s", i18n.T("auth.logout_tokens", a.DB.RefreshPath, a.DB.SessionPath))
 	return 0
 }
 
@@ -202,21 +225,7 @@ func (a *App) instanceDir(name string) string {
 	return filepath.Join(a.VersionsDir(), name)
 }
 
-func (a *App) listAccounts() {
-	names := a.DB.AccountNames()
-	if len(names) == 0 {
-		a.Log.Printf("%s", i18n.T("auth.no_account"))
-		return
-	}
-	for _, uuid := range names {
-		acc := a.DB.Data.Accounts[uuid]
-		marker := " "
-		if acc.Active {
-			marker = "*"
-		}
-		a.Log.Printf("%s %-16s %-36s %-8s %s", marker, acc.Name, acc.UUID, acc.Label, acc.MCTokenExp.Format("2006-01-02 15:04"))
-	}
-}
+func (a *App) listAccounts() { a.accountList() }
 
 func (a *App) listAvailable(f *flags) int {
 	limit, err := f.int("limit", 20)
@@ -238,7 +247,10 @@ func (a *App) listAvailable(f *flags) int {
 // ---------------------------------------------------------------------------
 // create / delete
 
-var instanceNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+var _ = 0
+
+// nameRuleDoc is the human description of what validateInstanceName enforces;
+// it lives in instance_import.go next to the code it documents.
 
 func (a *App) cmdCreate(args []string) int {
 	f, err := parseFlags("create", args, map[string]flagSpec{
@@ -261,8 +273,8 @@ func (a *App) cmdCreate(args []string) int {
 		return a.usageError("cli.missing_arg", "create", "<name>")
 	}
 	name := f.args[0]
-	if !instanceNameRe.MatchString(name) {
-		return a.fatal(fmt.Errorf("%s", i18n.T("inst.bad_name", name)))
+	if err := validateInstanceName(name); err != nil {
+		return a.fatal(err)
 	}
 	if _, exists := a.DB.GetInstance(name); exists && !f.boolean("force") {
 		return a.fatal(fmt.Errorf("%s", i18n.T("inst.exists", name)))
@@ -408,6 +420,8 @@ func (a *App) cmdConfig(args []string) int {
 	case "path", "--path":
 		a.Log.Printf("%s", i18n.T("cli.config_path", a.DB.Path))
 		a.Log.Printf("%s", i18n.T("cli.state_path", a.DB.StatePath))
+		a.Log.Printf("%s", i18n.T("cli.refresh_path", a.DB.RefreshPath))
+		a.Log.Printf("%s", i18n.T("cli.session_path", a.DB.SessionPath))
 		a.Log.Printf("%s", i18n.T("cli.last_path", a.DB.LastPath))
 		return 0
 	case "get":
@@ -507,6 +521,7 @@ func (a *App) javaInstall(args []string) int {
 	f, err := parseFlags("java install", args, map[string]flagSpec{
 		"component": {takesValue: true},
 		"archive":   {},
+		"force":     {},
 		"yes":       {},
 	})
 	if err != nil {
@@ -529,7 +544,7 @@ func (a *App) javaInstall(args []string) int {
 		}
 	}
 	dest := a.DB.Cfg().JavaDir
-	installer := a.JavaInstaller()
+	installer := a.JavaInstaller(f.boolean("force"))
 	if !f.boolean("archive") {
 		exe, err := installer.Install(component, major)
 		if err == nil {
@@ -633,8 +648,8 @@ func (a *App) autoCreateInstance(name string) (*store.Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !instanceNameRe.MatchString(version) {
-		return nil, fmt.Errorf("%s", i18n.T("inst.bad_name", version))
+	if err := validateInstanceName(version); err != nil {
+		return nil, err
 	}
 	man, err := a.ManifestStore().Get(false)
 	if err != nil {
