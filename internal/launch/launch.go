@@ -33,8 +33,11 @@ type Options struct {
 
 	Auth mcv.Auth
 
-	Xmx           string
-	Xms           string
+	Xmx string
+	Xms string
+	// MemoryPercent is the share of available memory used when sizing the heap
+	// automatically (config `auto_memory_percent`).
+	MemoryPercent int
 	ExtraJVMArgs  []string
 	ExtraGameArgs []string
 
@@ -115,7 +118,7 @@ func Prep(o Options) (*Command, error) {
 
 	xmx, xms := o.Xmx, o.Xms
 	if xmx == "" || xms == "" {
-		axmx, axms := RecommendMemory()
+		axmx, axms := RecommendMemory(o.MemoryPercent)
 		if xmx == "" {
 			xmx = axmx
 		}
@@ -209,15 +212,20 @@ func (c *Command) Run(wait bool, gameLog *os.File) (pid int, exitCode int, err e
 }
 
 // RecommendMemory suggests -Xmx/-Xms from the machine's memory: a share of what
-// is actually available, clamped to something Minecraft can live with.
-func RecommendMemory() (xmx, xms string) {
+// is actually available, clamped to something Minecraft can live with. percent
+// is config `auto_memory_percent` (a value outside 1..90 falls back to 50).
+func RecommendMemory(percent int) (xmx, xms string) {
+	if percent <= 0 || percent > 90 {
+		percent = 50
+	}
 	total, available, ok := systemMemory()
 	if !ok || total == 0 {
 		return "2G", "512M"
 	}
-	// never exceed half of physical memory, never exceed 75% of what is free
+	// never exceed half of physical memory, and never more than `percent` of
+	// what happens to be free right now
 	limit := total / 2
-	if free := available * 3 / 4; free < limit {
+	if free := available * int64(percent) / 100; free < limit {
 		limit = free
 	}
 	if limit < 512<<20 {

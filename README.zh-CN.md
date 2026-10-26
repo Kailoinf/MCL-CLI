@@ -83,6 +83,8 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli instance rename <旧名> <新名>` | 实例改名，游戏目录一起搬 |
 | `mcli instance scan [--all]` | 列出磁盘上的版本目录：类型、JSON/JAR、父版本、是否已注册 |
 | `mcli instance import <版本> [--as <名称>] [--force]` | 接管已有安装（官方启动器 / PCL / HMCL / 整合包） |
+| `mcli doctor [<名称>] [--all] [--deep]` | 体检：本机环境（目录、Java、版本清单、日志）＋实例需要的每个文件；有问题时退出码 1 |
+| `mcli repair <名称> [--deep] [--force] [--dry-run]` | 只补齐 doctor 查出的缺失/损坏文件（--force 则按清单全部重下） |
 | `mcli delete <名称> [--keep-files] [--yes]` | 删除实例（连同存档） |
 | `mcli launch <名称>|<版本>|--last [--version <版本>] [--java <路径>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <账号>]` | 按需安装并启动 |
 | `mcli refresh [--versions] [--all]` | 强制刷新已缓存元数据 |

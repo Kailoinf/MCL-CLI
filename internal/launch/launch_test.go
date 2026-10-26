@@ -134,7 +134,7 @@ func TestValidateMemory(t *testing.T) {
 }
 
 func TestRecommendMemoryIsSane(t *testing.T) {
-	xmx, xms := RecommendMemory()
+	xmx, xms := RecommendMemory(50)
 	if xmx == "" || xms == "" {
 		t.Fatal("recommendation must not be empty")
 	}

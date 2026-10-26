@@ -300,7 +300,10 @@ func Open(f Files) (*DB, error) {
 	if d.Session == nil {
 		d.Session = map[string]*SessionRecord{}
 	}
-	if d.DBVersion == 0 {
+	// Older shapes that needed no migration (a v2 file that stored no tokens)
+	// are simply brought up to date. A file written by a *newer* mcli keeps its
+	// number, so the CLI can warn instead of garbling it.
+	if d.DBVersion < DBVersion {
 		d.DBVersion = DBVersion
 	}
 	// A migrated home always ends up at the current shape, whatever version the

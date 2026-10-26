@@ -64,9 +64,121 @@ type Result struct {
 	NativesCount   int
 }
 
-// Ensure makes the version ready to launch: client jar, libraries, natives,
-// asset index, assets and the logging config.
-func (in Installer) Ensure(v *Version) (*Result, error) {
+// PlanOptions controls how a plan is built.
+type PlanOptions struct {
+	// FetchIndex fetches the asset index into memory when the local copy is
+	// missing, so that a first install knows the whole asset set. Without it a
+	// plan built on an empty cache would list the index file but no objects.
+	FetchIndex bool
+	// IncludeAssets enumerates the asset objects the index lists.
+	IncludeAssets bool
+}
+
+// Plan lists every file a version needs on disk. Building one never writes and
+// (apart from the optional index fetch) never downloads, which is what lets
+// `mcli doctor` report on an install and `mcli repair` fix exactly the broken
+// parts instead of re-downloading a whole version.
+type Plan struct {
+	VersionID     string
+	ClientJar     string
+	NativesDir    string
+	AssetsIndex   string
+	AssetsIndexID string
+	LogConfig     string
+	// Files are the version's own files: client jar, libraries, natives jars,
+	// asset index and logging config.
+	Files []dl.Item
+	// Assets are the asset objects, empty when the index could not be read.
+	Assets []dl.Item
+	// IndexReadable reports whether the asset objects could be enumerated. When
+	// it is false, Assets is empty: the index itself is not on disk yet.
+	IndexReadable bool
+	// AssetBytes is the total size of the asset objects.
+	AssetBytes int64
+	// NativesCount is how many natives jars the version lists.
+	NativesCount int
+}
+
+// Items returns every file the plan needs, the version's own files first.
+func (p *Plan) Items() []dl.Item {
+	out := make([]dl.Item, 0, len(p.Files)+len(p.Assets))
+	out = append(out, p.Files...)
+	return append(out, p.Assets...)
+}
+
+// MissingKind says why a planned file cannot be used.
+type MissingKind int
+
+const (
+	// MissingAbsent: there is no file at the destination.
+	MissingAbsent MissingKind = iota
+	// MissingWrongSize: a file is there, but not the expected size.
+	MissingWrongSize
+	// MissingWrongHash: right size, wrong digest.
+	MissingWrongHash
+)
+
+// String is only used in logs and tests.
+func (k MissingKind) String() string {
+	switch k {
+	case MissingWrongSize:
+		return "wrong size"
+	case MissingWrongHash:
+		return "wrong hash"
+	default:
+		return "absent"
+	}
+}
+
+// Missing is one planned file that is missing or wrong.
+type Missing struct {
+	Item dl.Item
+	Kind MissingKind
+}
+
+// Check reports the planned files that are missing or wrong.
+//
+// The version's own files are always hash-verified — there are only a few dozen
+// of them and a wrong library is a launch failure. Asset objects are checked for
+// presence and size unless deep is set: hashing 460 MB of assets on every launch
+// would be pure waste, so deep is for `mcli doctor --deep` and for repair.
+func (p *Plan) Check(deep bool) []Missing {
+	var out []Missing
+	verify := func(items []dl.Item, hash bool) {
+		for _, it := range items {
+			st, err := os.Stat(it.Dest)
+			if err != nil || st.IsDir() {
+				out = append(out, Missing{Item: it, Kind: MissingAbsent})
+				continue
+			}
+			if it.Size > 0 && st.Size() != it.Size {
+				out = append(out, Missing{Item: it, Kind: MissingWrongSize})
+				continue
+			}
+			if !hash {
+				continue
+			}
+			if !it.Verify() {
+				out = append(out, Missing{Item: it, Kind: MissingWrongHash})
+			}
+		}
+	}
+	verify(p.Files, true)
+	verify(p.Assets, deep)
+	return out
+}
+
+// MissingBytes totals the size of the unusable files.
+func MissingBytes(missing []Missing) int64 {
+	var total int64
+	for _, m := range missing {
+		total += m.Item.Size
+	}
+	return total
+}
+
+// Plan builds the file list for one version, without touching the disk.
+func (in Installer) Plan(v *Version, opts PlanOptions) (*Plan, error) {
 	if v.ID == "" {
 		return nil, fmt.Errorf("%s", i18n.T("mcv.missing_sources", "unknown"))
 	}
@@ -76,24 +188,20 @@ func (in Installer) Ensure(v *Version) (*Result, error) {
 	versionsDir := filepath.Join(in.Root, in.VersionsDir)
 	libsDir := filepath.Join(in.Root, "libraries")
 	assetsDir := filepath.Join(in.Root, "assets")
-	indexesDir := filepath.Join(assetsDir, "indexes")
-	objectsDir := filepath.Join(assetsDir, "objects")
-	logDir := filepath.Join(assetsDir, "log_configs")
 
-	res := &Result{
+	plan := &Plan{
 		VersionID:  v.ID,
 		NativesDir: filepath.Join(versionsDir, v.ID, "natives"),
 	}
-	jarID, jarPath := ClientJarTarget(in.Root, in.VersionsDir, v)
-	res.ClientJar = jarPath
-	in.log().Infof("%s", i18n.T("mcv.installing", v.ID, in.Root))
 
 	// --- client jar ------------------------------------------------------
+	jarID, jarPath := ClientJarTarget(in.Root, in.VersionsDir, v)
+	plan.ClientJar = jarPath
 	client, err := in.clientItem(v, jarID, jarPath)
 	if err != nil {
 		return nil, err
 	}
-	head := []dl.Item{client}
+	plan.Files = append(plan.Files, client)
 
 	// --- libraries -------------------------------------------------------
 	for _, l := range v.Libraries {
@@ -101,10 +209,9 @@ func (in Installer) Ensure(v *Version) (*Result, error) {
 			continue
 		}
 		if art, ok := l.ArtifactURL(in.Env); ok && !l.IsNative(in.Env) {
-			dest := libraryDest(libsDir, art, l, "")
-			head = append(head, dl.Item{
+			plan.Files = append(plan.Files, dl.Item{
 				Candidates: in.Mapper.Library(art.URL),
-				Dest:       dest,
+				Dest:       libraryDest(libsDir, art, l, ""),
 				SHA1:       art.SHA1,
 				Size:       art.Size,
 				Desc:       "library " + l.Name,
@@ -112,98 +219,102 @@ func (in Installer) Ensure(v *Version) (*Result, error) {
 		}
 		if nat, ok := l.NativeURL(in.Env); ok {
 			c, _ := l.NativeClassifier(in.Env)
-			dest := libraryDest(libsDir, nat, l, c)
-			head = append(head, dl.Item{
+			plan.Files = append(plan.Files, dl.Item{
 				Candidates: in.Mapper.Library(nat.URL),
-				Dest:       dest,
+				Dest:       libraryDest(libsDir, nat, l, c),
 				SHA1:       nat.SHA1,
 				Size:       nat.Size,
 				Desc:       "natives " + l.Name,
 			})
-			res.NativesCount++
+			plan.NativesCount++
 		}
 	}
 
 	// --- asset index -----------------------------------------------------
 	if v.AssetIndex != nil && v.AssetIndex.URL != "" {
 		name := assetIndexName(v)
-		res.AssetsIndexID = strings.TrimSuffix(name, ".json")
-		res.AssetsIndex = filepath.Join(indexesDir, name)
-		head = append(head, dl.Item{
+		plan.AssetsIndexID = strings.TrimSuffix(name, ".json")
+		plan.AssetsIndex = filepath.Join(assetsDir, "indexes", name)
+		plan.Files = append(plan.Files, dl.Item{
 			Candidates: in.Mapper.Candidates(v.AssetIndex.URL),
-			Dest:       res.AssetsIndex,
+			Dest:       plan.AssetsIndex,
 			SHA1:       v.AssetIndex.SHA1,
 			Size:       v.AssetIndex.Size,
-			Desc:       "asset index " + res.AssetsIndexID,
+			Desc:       "asset index " + plan.AssetsIndexID,
 		})
 	}
 
 	// --- logging config --------------------------------------------------
 	if v.Logging != nil && v.Logging.Client != nil && v.Logging.Client.File.URL != "" {
 		f := v.Logging.Client.File
-		res.LogConfig = filepath.Join(logDir, f.ID)
-		head = append(head, dl.Item{
+		plan.LogConfig = filepath.Join(assetsDir, "log_configs", f.ID)
+		plan.Files = append(plan.Files, dl.Item{
 			Candidates: in.Mapper.Candidates(f.URL),
-			Dest:       res.LogConfig,
+			Dest:       plan.LogConfig,
 			SHA1:       f.SHA1,
 			Size:       f.Size,
 			Desc:       "logging config " + f.ID,
 		})
 	}
 
-	// --- plan ------------------------------------------------------------
-	res.TotalFiles = len(head)
-	missing := []dl.Item{}
-	for _, it := range head {
-		if it.Verify() {
-			res.Skipped++
-			continue
-		}
-		missing = append(missing, it)
-		res.MissingBytes += it.Size
-	}
-
-	// asset objects are only enumerable after the index is readable
-	var assetItems []dl.Item
-	if v.AssetIndex != nil {
-		objects, err := in.loadIndexForPlan(res, v.AssetIndex.URL)
+	// --- asset objects ---------------------------------------------------
+	if opts.IncludeAssets && v.AssetIndex != nil {
+		objects, err := in.assetObjects(plan.AssetsIndex, v.AssetIndex.URL, opts.FetchIndex)
 		if err != nil {
 			return nil, err
 		}
 		if objects != nil {
-			var total int64
+			plan.IndexReadable = true
+			objectsDir := filepath.Join(assetsDir, "objects")
 			for _, o := range objects {
-				total += o.Size
-			}
-			in.log().Infof("%s", i18n.T("mcv.assets_index", res.AssetsIndexID, len(objects), humanBytes(total)))
-			for _, o := range objects {
-				dest := filepath.Join(objectsDir, o.Hash[:2], o.Hash)
-				it := dl.Item{
+				plan.AssetBytes += o.Size
+				plan.Assets = append(plan.Assets, dl.Item{
 					Candidates: in.Mapper.Asset(AssetObjectURL + "/" + o.Hash[:2] + "/" + o.Hash),
-					Dest:       dest,
+					Dest:       filepath.Join(objectsDir, o.Hash[:2], o.Hash),
 					SHA1:       o.Hash,
 					Size:       o.Size,
 					Desc:       "asset " + o.Hash[:8],
-				}
-				res.TotalFiles++
-				if it.Verify() {
-					res.Skipped++
-					continue
-				}
-				assetItems = append(assetItems, it)
-				res.MissingBytes += o.Size
+				})
 			}
 		}
 	}
-	missing = append(missing, assetItems...)
-	res.MissingFiles = len(missing)
+	return plan, nil
+}
 
+// Ensure makes the version ready to launch: client jar, libraries, natives,
+// asset index, assets and the logging config.
+func (in Installer) Ensure(v *Version) (*Result, error) {
+	plan, err := in.Plan(v, PlanOptions{IncludeAssets: true, FetchIndex: true})
+	if err != nil {
+		return nil, err
+	}
+	res := &Result{
+		VersionID:     plan.VersionID,
+		ClientJar:     plan.ClientJar,
+		NativesDir:    plan.NativesDir,
+		AssetsIndex:   plan.AssetsIndex,
+		AssetsIndexID: plan.AssetsIndexID,
+		LogConfig:     plan.LogConfig,
+		NativesCount:  plan.NativesCount,
+	}
+	libsDir := filepath.Join(in.Root, "libraries")
+	in.log().Infof("%s", i18n.T("mcv.installing", v.ID, in.Root))
+	if plan.IndexReadable {
+		in.log().Infof("%s", i18n.T("mcv.assets_index", plan.AssetsIndexID, len(plan.Assets), humanBytes(plan.AssetBytes)))
+	}
+
+	missing := plan.Check(false)
+	res.TotalFiles = len(plan.Files) + len(plan.Assets)
+	res.Skipped = res.TotalFiles - len(missing)
+	res.MissingFiles = len(missing)
+	res.MissingBytes = MissingBytes(missing)
 	in.log().Infof("%s", i18n.T("mcv.install_summary", res.MissingFiles, humanBytes(res.MissingBytes), res.Skipped))
+
 	if res.MissingFiles == 0 {
 		res.AlreadyPresent = true
 		in.log().Infof("%s", i18n.T("mcv.already_installed", v.ID))
 		if !in.DryRun {
-			if err := in.extractAllNatives(v, libsDir, res.NativesDir); err != nil {
+			if err := in.extractAllNatives(v, libsDir, plan.NativesDir); err != nil {
 				return nil, err
 			}
 		}
@@ -214,9 +325,9 @@ func (in Installer) Ensure(v *Version) (*Result, error) {
 		return res, nil
 	}
 
-	// --- confirmation and download ---------------------------------------
-	if in.ConfirmTotal != nil && len(missing) > 0 {
-		ok, err := in.ConfirmTotal(v.ID, len(missing), res.MissingBytes)
+	// --- confirmation and downloads --------------------------------------
+	if in.ConfirmTotal != nil {
+		ok, err := in.ConfirmTotal(v.ID, res.MissingFiles, res.MissingBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -224,13 +335,14 @@ func (in Installer) Ensure(v *Version) (*Result, error) {
 			return nil, fmt.Errorf("%s", i18n.T("dl.declined", v.ID))
 		}
 	}
-	if err := in.fetchAll(head, res); err != nil {
+	items := make([]dl.Item, 0, len(missing))
+	for _, m := range missing {
+		items = append(items, m.Item)
+	}
+	if err := in.fetchAll(items, res); err != nil {
 		return nil, err
 	}
-	if err := in.fetchAll(assetItems, res); err != nil {
-		return nil, err
-	}
-	if err := in.extractAllNatives(v, libsDir, res.NativesDir); err != nil {
+	if err := in.extractAllNatives(v, libsDir, plan.NativesDir); err != nil {
 		return nil, err
 	}
 	in.log().Infof("%s", i18n.T("mcv.install_done", v.ID))
@@ -259,26 +371,30 @@ func (in Installer) clientItem(v *Version, jarID, dest string) (dl.Item, error) 
 	}, nil
 }
 
-// loadIndexForPlan returns the asset objects for planning. It reads the index
-// from disk, or, in dry runs and when the file is missing, fetches it into
-// memory without writing anything.
-func (in Installer) loadIndexForPlan(res *Result, indexURL string) (map[string]AssetObject, error) {
-	if res.AssetsIndex == "" {
+// assetObjects returns the objects an asset index lists.
+//
+// The index is read from disk; when it is missing and allowFetch is set it is
+// fetched into memory without being written, because a first install has to know
+// the object list before the index file itself has been downloaded. A corrupt
+// local index is an error; a failed fetch is not (a plan without asset counts is
+// still useful, and doctor should work offline).
+func (in Installer) assetObjects(indexPath, indexURL string, allowFetch bool) (map[string]AssetObject, error) {
+	if indexPath == "" {
 		return nil, nil
 	}
-	if raw, err := os.ReadFile(res.AssetsIndex); err == nil {
+	if raw, err := os.ReadFile(indexPath); err == nil {
 		idx := &AssetIndex{}
 		if err := json.Unmarshal(raw, idx); err != nil {
-			return nil, fmt.Errorf("%s: %v", res.AssetsIndex, err)
+			return nil, fmt.Errorf("%s: %v", indexPath, err)
 		}
 		return idx.Objects, nil
 	}
-	if !in.DryRun || indexURL == "" {
+	if !allowFetch || indexURL == "" {
 		return nil, nil
 	}
-	data, _, err := in.Policy.FetchBytes(in.Mapper.Candidates(indexURL), "asset index "+res.AssetsIndexID)
+	data, _, err := in.Policy.FetchBytes(in.Mapper.Candidates(indexURL), "asset index")
 	if err != nil {
-		return nil, nil // planning without asset counts is acceptable
+		return nil, nil
 	}
 	idx := &AssetIndex{}
 	if err := json.Unmarshal(data, idx); err != nil {

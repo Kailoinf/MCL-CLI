@@ -9,8 +9,8 @@ and what is left. Update it in the same commit as the work.
 * version `0.2.0` (`app.go`), on-disk `db_version = 3`.
 * `gofmt -l .` empty, `go vet ./...` clean, `go test ./...` green,
   `go build -o mcli .` green.
-* Latest commits on `main`: `bef4e06` (instance command), `3c295a6` (credentials
-  split, account command, adopting existing installs).
+* Commands implemented: `version help list create delete launch refresh config
+  java login logout account instance doctor repair` (`fix` aliases `repair`).
 
 ### Layout that the code assumes today
 
@@ -56,6 +56,23 @@ and what is left. Update it in the same commit as the work.
   `.mcli-ok` marker) no longer reports "already installed".
 * `dl.SourceHealth` unit test: six files, a dead mirror is attempted exactly
   three times and the official source serves all six.
+* `mcli doctor` / `mcli repair` against the real PCL install: `doctor
+  "26.3-Fabric 0.20.1"` reported 5202 of 5216 files in place, 14 missing
+  (10.0 MiB), the asset index present (5147 objects), natives not yet extracted,
+  one mod jar, the directory size, and exited 1. `repair … --yes` fetched exactly
+  those 14 files, re-verified (5216/5216), extracted 24 native files — including
+  `natives/lwjgl/linux/x64/org/lwjgl/...` plus the empty `java`/`jna`/`netty`
+  subdirectories the version's JSON points at — and checked the runtime; a second
+  `doctor` found no problems and exited 0.
+* `doctor --all` with nothing installed reports the environment (home, the five
+  files, free space, java runtimes, manifest cache, newest game log), lists the
+  instances, and exits 1 exactly when something is wrong.
+* `auto_memory_percent` really sizes the heap now: on this 7.5 GiB box, 25 →
+  `-Xmx1043M`, 50 → `-Xmx2085M`, 75 → `-Xmx3142M`, clamped to half of physical
+  memory and never above what is free.
+* `internal/mcv/plan_test.go` pins the plan offline: the file list, the natives
+  count, asset objects at `objects/<first2>/<hash>`, all three missing kinds
+  (absent / wrong size / wrong hash), and that planning itself writes nothing.
 
 ## Not verified, and why
 
@@ -127,6 +144,8 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 ./mcli instance show demo && ./mcli instance list
 ./mcli instance copy demo clone --with-files && ./mcli instance rename clone renamed
 ./mcli launch demo --dry-run --yes                 # inspect the java command line
+./mcli doctor --all                                # what is wrong here, instance by instance
+./mcli repair demo --dry-run                       # what repair would fetch (exit 1 when broken)
 ./mcli java which 1.21.4                           # -> 21
 ```
 
@@ -164,21 +183,38 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 * `7za` (p7zip) unpacks `.minecraft.7z`; the maintainer's upload lives at
   `/root/mcli-test/.minecraft.7z` (506 MB compressed, 630 MB unpacked).
 
+## Conventions (detail AGENTS.md deliberately leaves out)
+
+* **Adding a command**: usage/description keys (`cli.cmd.<name>.usage`, `.desc`)
+  in both catalogs, an entry in the `cmds` table in `printHelp` (main.go) and in
+  the `switch` in `run`, then `func (a *App) cmdX(args []string) int` built on
+  `parseFlags("x", args, map[string]flagSpec{...})`. Unknown options stay errors
+  so a typo cannot change behaviour, and extra positionals are rejected with
+  `cli.unexpected_arg` rather than ignored. `a.fatal(err)` exits 1,
+  `a.usageError(...)` exits 2.
+* **Tables** pad by display width (`table.go`), never `% -20s`: a CJK path or a
+  Chinese status word would shift every following column.
+* **Where things live**: `main.go` dispatch/help · `commands.go`
+  login/logout/list/create/delete/refresh/config/java · `instance_cmd.go`
+  instance sub-commands · `instance_import.go` scan/import + name rules ·
+  `account_cmd.go` accounts · `doctor_cmd.go` doctor/repair · `launch_cmd.go`
+  launch + java choice · `internal/{i18n,paths,toml,config,store,secret,logx,mirror,dl,mcv,java,auth,launch}`.
+* **Tests stay offline**: `httptest` stands in for failing mirrors, synthetic
+  version JSONs and zip fixtures for `internal/mcv`, temp directories for
+  `internal/store`. Parsing and decisions get tested; the network, a browser and a
+  display are verified by hand.
+
 ## Loose ends, in the order they matter
 
-1. **`mcli doctor` / `mcli repair`** — `instance import` already prints "next:
-   `mcli doctor <name>`", so the promise is outstanding. Plan: lift the file
-   enumeration out of `mcv.Installer.Ensure` into a reusable `Plan` (it already
-   computes `missing` via size + SHA-1), report per-instance health from it
-   (missing / corrupt / bytes, index present, java match, saves present), and let
-   `repair` fetch exactly that list with `--force` for a full re-download.
-2. **`auto_memory_percent` is a dead config key** — `launch.RecommendMemory()`
-   ignores it and uses a hardcoded 50 %/75 % rule. Either honour it or remove the
-   key; leaving a documented setting that does nothing is worse than both.
-3. **`launch --server host[:port]`** (modern versions want
+1. **`mcli launch --server host[:port]`** (modern versions want
    `--quickPlayMultiplayer`, older ones `--server`/`--port`) and a `--fullscreen`
    equivalent, for people who launch straight into a server.
-4. **Instance-level `--force` reinstall** (`launch --force` re-downloads the
-   instance's files without touching saves).
-5. **Windows pass**: run the scan/import/dry-run chain on the maintainer's
-   machine (UCRT64) and fix whatever path handling surfaces.
+2. **Instance-level `--force` reinstall** (`launch --force` re-downloads the
+   instance's files without touching saves) — `repair --force` already covers the
+   file half of this.
+3. **Windows pass**: run the scan/import/dry-run/doctor chain on the maintainer's
+   machine (UCRT64) and fix whatever path handling surfaces (`disk_windows.go`
+   only omits the free-space line; the rest of doctor is path-agnostic).
+4. **`mcli doctor` for Java**: doctor reports the runtime a version needs and
+   which one would be used, but does not yet check that the chosen runtime
+   actually starts.

@@ -76,6 +76,10 @@ func run(argv []string) int {
 		return app.cmdJava(args)
 	case "instance", "inst":
 		return app.cmdInstance(args)
+	case "doctor":
+		return app.cmdDoctor(args)
+	case "repair", "fix":
+		return app.cmdRepair(args)
 	default:
 		app.Log.Printf("%s", i18n.T("cli.unknown_command", command))
 		app.Log.Printf("%s", i18n.T("cli.usage"))
@@ -98,6 +102,8 @@ func printHelp(app *App, topic string) {
 		{"list", "cli.cmd.list.usage", "cli.cmd.list.desc"},
 		{"create", "cli.cmd.create.usage", "cli.cmd.create.desc"},
 		{"instance", "cli.cmd.instance.usage", "cli.cmd.instance.desc"},
+		{"doctor", "cli.cmd.doctor.usage", "cli.cmd.doctor.desc"},
+		{"repair", "cli.cmd.repair.usage", "cli.cmd.repair.desc"},
 		{"delete", "cli.cmd.delete.usage", "cli.cmd.delete.desc"},
 		{"launch", "cli.cmd.launch.usage", "cli.cmd.launch.desc"},
 		{"refresh", "cli.cmd.refresh.usage", "cli.cmd.refresh.desc"},

@@ -201,6 +201,7 @@ func (a *App) cmdLaunch(args []string) int {
 		Auth:            authBlock,
 		Xmx:             xmx,
 		Xms:             xms,
+		MemoryPercent:   a.DB.Cfg().AutoMemoryPercent,
 		ExtraJVMArgs:    jvmArgs,
 		ExtraGameArgs:   gameArgs,
 		Width:           width,

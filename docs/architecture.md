@@ -115,6 +115,23 @@ Two properties of other launchers' output matter here:
   arguments, creates the directories, and `nativeDirsFor` unpacks each natives jar
   into the base directory plus the family subdirectory the version asks for.
 
+## Diagnosis: doctor and repair
+
+`mcv.Plan` is the single description of "which files does this version need":
+the version's own files (client jar, libraries, asset index, log config), the
+natives and the directories their arguments name, and every object of the asset
+index. `Ensure` (install), `doctor` (report) and `repair` (fetch) all read it, so
+they cannot disagree about what a version needs.
+
+* `doctor` works with a dry installer and a dry loader, so it never writes — not
+  even a directory. `--deep` hashes asset objects instead of trusting their size.
+* `repair` fetches only what `Plan.Check` reports, then runs `Ensure` once to
+  confirm the result and extract natives, and finally checks the runtime. `--force`
+  deletes the planned files first so the downloader really re-fetches them.
+* Missing kinds stay apart — absent, wrong size, wrong hash — and size is compared
+  before the hash, so a truncated file is reported as truncated rather than as a
+  hash mismatch.
+
 ## Error handling style
 
 Errors are returned, not panicked. The CLI translates them once at the top
