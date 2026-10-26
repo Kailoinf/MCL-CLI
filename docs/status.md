@@ -67,6 +67,14 @@ and what is left. Update it in the same commit as the work.
 * `doctor --all` with nothing installed reports the environment (home, the five
   files, free space, java runtimes, manifest cache, newest game log), lists the
   instances, and exits 1 exactly when something is wrong.
+* `launch --server host[:port]` (`--fullscreen`, `--demo`) on both argument
+  generations: the modern profile produced `--quickPlayMultiplayer
+  example.com:25565` from its own JSON (feature `is_quick_play_multiplayer`) and
+  no `--quickPlayPath` — that one is only passed when a launcher has a quick play
+  file to hand over — while 1.8.9 got the classic `--server play.example.net
+  --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
+  address (`host:abc`) exits 2, and a launch without the switches adds none of
+  them. `internal/launch/server_test.go` pins all of it.
 * `auto_memory_percent` really sizes the heap now: on this 7.5 GiB box, 25 →
   `-Xmx1043M`, 50 → `-Xmx2085M`, 75 → `-Xmx3142M`, clamped to half of physical
   memory and never above what is free.
@@ -182,6 +190,24 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
   that re-downloaded, which is the point of `instance import`.
 * `7za` (p7zip) unpacks `.minecraft.7z`; the maintainer's upload lives at
   `/root/mcli-test/.minecraft.7z` (506 MB compressed, 630 MB unpacked).
+
+## Planned work, in the order the maintainer asked for it
+
+1. **Server-side launch** — `mcli server` next to the client commands: download
+   `downloads.server` from the version JSON, write `eula.txt` and a minimal
+   `server.properties`, then start it with the version's own Java major and
+   `-Xmx/-Xms`. A server needs no display, so this one *can* be verified end to
+   end on this box (start it, wait for "Done", stop it).
+2. **Fabric loader installation** — today mcli only *runs* an existing modded
+   profile. Installing means fetching the loader's version JSON from
+   `meta.fabricmc.net` (`/v2/versions/loader/<game>/<loader>/profile/json`), which
+   is already the shape `mcv.Version` parses, and merging it as a child of the
+   game version.
+3. **Mod and resource-pack search** — mirror what PCL and Console Minecraft
+   Launcher do: query Modrinth's and CurseForge's search APIs, list results, and
+   install a hit into `mods/` or `resourcepacks/` of an instance. Keep the search
+   itself thin (one query, one page, the fields that matter) — the interesting
+   work is installing the result into the right instance.
 
 ## Conventions (detail AGENTS.md deliberately leaves out)
 

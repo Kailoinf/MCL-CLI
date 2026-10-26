@@ -38,7 +38,6 @@ type Paths struct {
 	QuickPlaySingleplayer string
 	QuickPlayMultiplayer  string
 	QuickPlayRealms       string
-	Demo                  bool
 }
 
 // Spec is everything needed to build a command line.

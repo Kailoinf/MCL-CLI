@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -40,6 +41,13 @@ type Options struct {
 	MemoryPercent int
 	ExtraJVMArgs  []string
 	ExtraGameArgs []string
+	// Server asks the game to join "host[:port]" right away — either with the
+	// quick play arguments a modern version JSON declares, or with the classic
+	// --server/--port pair on an old one. Fullscreen and Demo are the same kind
+	// of one-off switch: they are never stored with the instance.
+	Server     string
+	Fullscreen bool
+	Demo       bool
 
 	Width  int
 	Height int
@@ -85,7 +93,22 @@ func Prep(o Options) (*Command, error) {
 		gameDir = filepath.Join(o.Root, "game")
 	}
 
-	cpEntries := mcv.ClasspathEntries(v, mcv.EnvCurrent(mcv.FeatureSet(o.Width > 0 && o.Height > 0, nil)), libsDir, clientJar)
+	// quick play / demo are feature switches: the version's JSON decides which
+	// arguments they unlock, so they have to be set before anything else is built.
+	host, port, _ := SplitServer(o.Server)
+	address := ServerAddress(o.Server)
+	features := map[string]bool{}
+	if o.Server != "" {
+		// Only the multiplayer switch: has_quick_plays_support would also unlock
+		// --quickPlayPath, and mcli has no quick play file to hand the client.
+		features["is_quick_play_multiplayer"] = true
+	}
+	if o.Demo {
+		features["is_demo_user"] = true
+	}
+	env := mcv.EnvCurrent(mcv.FeatureSet(o.Width > 0 && o.Height > 0, features))
+
+	cpEntries := mcv.ClasspathEntries(v, env, libsDir, clientJar)
 	sep := string(filepath.ListSeparator)
 	cp := mcv.ClasspathString(cpEntries, sep)
 
@@ -96,23 +119,24 @@ func Prep(o Options) (*Command, error) {
 
 	spec := mcv.Spec{
 		Version: v,
-		Env:     mcv.EnvCurrent(mcv.FeatureSet(o.Width > 0 && o.Height > 0, nil)),
+		Env:     env,
 		Auth:    o.Auth,
 		Paths: mcv.Paths{
-			GameDir:          gameDir,
-			AssetsRoot:       assetsRoot,
-			AssetsIndex:      v.Assets,
-			NativesDir:       nativesDir,
-			LibraryDir:       libsDir,
-			Classpath:        cp,
-			Separator:        sep,
-			LauncherName:     o.LauncherName,
-			LauncherVersion:  o.LauncherVersion,
-			VersionName:      v.ID,
-			VersionType:      v.Type,
-			LogConfig:        logConfig,
-			ResolutionWidth:  o.Width,
-			ResolutionHeight: o.Height,
+			GameDir:              gameDir,
+			AssetsRoot:           assetsRoot,
+			AssetsIndex:          v.Assets,
+			NativesDir:           nativesDir,
+			LibraryDir:           libsDir,
+			Classpath:            cp,
+			Separator:            sep,
+			LauncherName:         o.LauncherName,
+			LauncherVersion:      o.LauncherVersion,
+			VersionName:          v.ID,
+			VersionType:          v.Type,
+			LogConfig:            logConfig,
+			ResolutionWidth:      o.Width,
+			ResolutionHeight:     o.Height,
+			QuickPlayMultiplayer: address,
 		},
 	}
 
@@ -150,7 +174,21 @@ func Prep(o Options) (*Command, error) {
 
 	args := append([]string{}, jvm...)
 	args = append(args, v.MainClass)
-	args = append(args, spec.GameArgs()...)
+	game := spec.GameArgs()
+	args = append(args, game...)
+	// The quick play arguments belong to the version's own JSON (gated by
+	// is_quick_play_multiplayer) and are filled in above; versions that predate
+	// them only understand --server/--port, so they get the pair by hand.
+	if host != "" && !slices.Contains(game, "--quickPlayMultiplayer") {
+		args = append(args, "--server", host, "--port", port)
+	}
+	if o.Demo && !slices.Contains(game, "--demo") {
+		args = append(args, "--demo")
+	}
+	// No version JSON declares --fullscreen, although every client accepts it.
+	if o.Fullscreen {
+		args = append(args, "--fullscreen")
+	}
 	args = append(args, o.ExtraGameArgs...)
 
 	return &Command{
@@ -164,6 +202,49 @@ func Prep(o Options) (*Command, error) {
 		Xmx:        xmx,
 		Xms:        xms,
 	}, nil
+}
+
+// SplitServer separates "host[:port]" into host and port. A missing port becomes
+// 25565, the client's own default. An IPv6 literal keeps its brackets (a bare one
+// is bracketed so host + ":" + port stays readable). The last result is false
+// when there is no host to connect to at all.
+func SplitServer(s string) (host, port string, ok bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", "", false
+	}
+	if strings.HasPrefix(s, "[") {
+		end := strings.Index(s, "]")
+		if end < 0 {
+			return "", "", false
+		}
+		host = s[:end+1]
+		rest := strings.TrimPrefix(s[end+1:], ":")
+		if rest == "" {
+			rest = "25565"
+		}
+		return host, rest, true
+	}
+	if strings.Count(s, ":") > 1 {
+		return "[" + s + "]", "25565", true
+	}
+	host, port, found := strings.Cut(s, ":")
+	if host == "" {
+		return "", "", false
+	}
+	if !found || port == "" {
+		port = "25565"
+	}
+	return host, port, true
+}
+
+// ServerAddress renders the quick play value: the address the client is handed.
+func ServerAddress(server string) string {
+	host, port, ok := SplitServer(server)
+	if !ok {
+		return ""
+	}
+	return host + ":" + port
 }
 
 // CommandLine renders the command for logs and --dry-run output.

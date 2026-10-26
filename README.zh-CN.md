@@ -86,7 +86,7 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli doctor [<名称>] [--all] [--deep]` | 体检：本机环境（目录、Java、版本清单、日志）＋实例需要的每个文件；有问题时退出码 1 |
 | `mcli repair <名称> [--deep] [--force] [--dry-run]` | 只补齐 doctor 查出的缺失/损坏文件（--force 则按清单全部重下） |
 | `mcli delete <名称> [--keep-files] [--yes]` | 删除实例（连同存档） |
-| `mcli launch <名称>|<版本>|--last [--version <版本>] [--java <路径>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <账号>]` | 按需安装并启动 |
+| `mcli launch <名称>|<版本>|--last [--version <版本>] [--java <路径>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <账号>]` | 按需安装并启动 |
 | `mcli refresh [--versions] [--all]` | 强制刷新已缓存元数据 |
 | `mcli config [get\|set\|unset\|list\|path]` | 读写设置 |
 | `mcli java [list \| install <major> [--force] \| which <版本>]` | 查看或安装 Java（--force 重装没装完的运行时） |

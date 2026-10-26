@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,18 +18,21 @@ import (
 
 func (a *App) cmdLaunch(args []string) int {
 	f, err := parseFlags("launch", args, map[string]flagSpec{
-		"last":     {},
-		"version":  {takesValue: true},
-		"java":     {takesValue: true},
-		"xmx":      {takesValue: true},
-		"xms":      {takesValue: true},
-		"jvm-arg":  {takesValue: true, list: true},
-		"game-arg": {takesValue: true, list: true},
-		"width":    {takesValue: true},
-		"height":   {takesValue: true},
-		"dry-run":  {},
-		"wait":     {},
-		"account":  {takesValue: true},
+		"last":       {},
+		"version":    {takesValue: true},
+		"java":       {takesValue: true},
+		"xmx":        {takesValue: true},
+		"xms":        {takesValue: true},
+		"jvm-arg":    {takesValue: true, list: true},
+		"game-arg":   {takesValue: true, list: true},
+		"width":      {takesValue: true},
+		"height":     {takesValue: true},
+		"server":     {takesValue: true},
+		"fullscreen": {},
+		"demo":       {},
+		"dry-run":    {},
+		"wait":       {},
+		"account":    {takesValue: true},
 	})
 	if err != nil {
 		return a.fatal(err)
@@ -146,7 +150,29 @@ func (a *App) cmdLaunch(args []string) int {
 		return a.fatal(err)
 	}
 	eff := v.Effective()
-	for _, key := range unknownPlaceholders(eff, width, height) {
+
+	// --- per-run game switches ------------------------------------------
+	// These are never stored with the instance: joining a server is a one-off.
+	serverFlag := f.str("server", "")
+	fullscreen := f.boolean("fullscreen")
+	demo := f.boolean("demo")
+	if f.has("server") && strings.TrimSpace(serverFlag) == "" {
+		return a.usageError("launch.server_empty")
+	}
+	if serverFlag != "" {
+		host, port, ok := launch.SplitServer(serverFlag)
+		if !ok || host == "" {
+			return a.usageError("launch.server_invalid", serverFlag)
+		}
+		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+			return a.usageError("launch.server_invalid", serverFlag)
+		}
+		a.Log.Printf("%s", i18n.T("launch.joining", launch.ServerAddress(serverFlag)))
+	}
+
+	// The drift check has to see the same features the launch will: a quick play
+	// placeholder counts as filled once --server is given.
+	for _, key := range unknownPlaceholders(eff, width, height, serverFlag, demo) {
 		a.Log.Warnf("%s", i18n.T("launch.unknown_placeholder", key))
 	}
 
@@ -204,6 +230,9 @@ func (a *App) cmdLaunch(args []string) int {
 		MemoryPercent:   a.DB.Cfg().AutoMemoryPercent,
 		ExtraJVMArgs:    jvmArgs,
 		ExtraGameArgs:   gameArgs,
+		Server:          serverFlag,
+		Fullscreen:      fullscreen,
+		Demo:            demo,
 		Width:           width,
 		Height:          height,
 		LauncherName:    LauncherName,
@@ -342,11 +371,20 @@ func (a *App) ensureJava(v *mcv.Version, versionID string, need int, pinned stri
 }
 
 // unknownPlaceholders reports placeholders a version uses that mcli does not
-// fill, so forward-compatibility drift is visible instead of silent.
-func unknownPlaceholders(v *mcv.Version, width, height int) []string {
+// fill, so forward-compatibility drift is visible instead of silent. The feature
+// set mirrors a real launch, so a placeholder that --server or --demo fills
+// counts as filled.
+func unknownPlaceholders(v *mcv.Version, width, height int, server string, demo bool) []string {
+	features := map[string]bool{}
+	if server != "" {
+		features["is_quick_play_multiplayer"] = true
+	}
+	if demo {
+		features["is_demo_user"] = true
+	}
 	spec := mcv.Spec{
 		Version: v,
-		Env:     mcv.EnvCurrent(mcv.FeatureSet(width > 0 && height > 0, nil)),
+		Env:     mcv.EnvCurrent(mcv.FeatureSet(width > 0 && height > 0, features)),
 		Auth: mcv.Auth{
 			PlayerName: "x", UUID: "x", AccessToken: "x", XUID: "x", ClientID: "x",
 			UserType: "msa", Properties: "{}", Session: "x",
@@ -356,6 +394,7 @@ func unknownPlaceholders(v *mcv.Version, width, height int) []string {
 			LibraryDir: "x", Classpath: "x", Separator: string(filepath.ListSeparator),
 			LauncherName: "x", LauncherVersion: "x", VersionName: v.ID, VersionType: v.Type,
 			LogConfig: "x", ResolutionWidth: width, ResolutionHeight: height,
+			QuickPlayMultiplayer: launch.ServerAddress(server),
 		},
 	}
 	seen := map[string]bool{}

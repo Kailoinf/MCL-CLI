@@ -89,7 +89,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli doctor [<name>] [--all] [--deep]` | health check: the machine (home, java, manifest, log) and every file an instance needs; exit 1 when something is wrong |
 | `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the files doctor found missing or damaged (`--force` re-downloads everything planned) |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance (and its saves) |
-| `mcli launch <name>|<version>|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
+| `mcli launch <name>|<version>|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <a>]` | install if needed and start |
 | `mcli refresh [--versions] [--all]` | force-refresh cached metadata |
 | `mcli config [get\|set\|unset\|list\|path]` | read or change settings |
 | `mcli java [list \| install <major> [--force] \| which <version>]` | inspect or install Java runtimes (`--force` reinstalls an incomplete one) |
