@@ -103,6 +103,25 @@ type LastLaunch struct {
 	At       time.Time `toml:"at" json:"at"`
 }
 
+// Server is a server-side install: one version's server jar, a directory of its
+// own, and the memory and port it runs with. It has no account and no assets.
+type Server struct {
+	Name    string   `toml:"name" json:"name"`
+	Version string   `toml:"version" json:"version"`
+	Dir     string   `toml:"dir,omitempty" json:"dir,omitempty"` // empty = <minecraft>/servers/<name>
+	Java    string   `toml:"java,omitempty" json:"java,omitempty"`
+	Xmx     string   `toml:"xmx,omitempty" json:"xmx,omitempty"`
+	Xms     string   `toml:"xms,omitempty" json:"xms,omitempty"`
+	Port    int      `toml:"port,omitempty" json:"port,omitempty"`
+	JvmArgs []string `toml:"jvm_args,omitempty" json:"jvm_args,omitempty"`
+	Eula    bool     `toml:"eula" json:"eula"`
+	// Pid is the running server's process id, 0 when it is not up. `server stop`
+	// uses it, and it is cleared as soon as the process is gone.
+	Pid       int       `toml:"pid,omitempty" json:"pid,omitempty"`
+	CreatedAt time.Time `toml:"created_at" json:"created_at"`
+	StartedAt time.Time `toml:"last_started,omitempty" json:"last_started,omitempty"`
+}
+
 // ManifestCache points at the cached version manifest body.
 type ManifestCache struct {
 	Source    string    `toml:"source" json:"source"` // "bmclapi" or "mojang"
@@ -116,6 +135,7 @@ type stateFile struct {
 	StateVersion int                  `toml:"state_version"`
 	Accounts     map[string]*Account  `toml:"accounts"`
 	Instances    map[string]*Instance `toml:"instances"`
+	Servers      map[string]*Server   `toml:"servers,omitempty"`
 	Manifest     *ManifestCache       `toml:"manifest_cache,omitempty"`
 }
 
@@ -144,6 +164,7 @@ type Data struct {
 	Refresh   map[string]*TokenRecord
 	Session   map[string]*SessionRecord
 	Instances map[string]*Instance
+	Servers   map[string]*Server
 	Manifest  *ManifestCache
 }
 
@@ -194,6 +215,7 @@ func Open(f Files) (*Store, error) {
 			Refresh:   map[string]*TokenRecord{},
 			Session:   map[string]*SessionRecord{},
 			Instances: map[string]*Instance{},
+			Servers:   map[string]*Server{},
 		},
 	}
 
@@ -231,6 +253,9 @@ func Open(f Files) (*Store, error) {
 		if file.Instances != nil {
 			s.Data.Instances = file.Instances
 		}
+		if file.Servers != nil {
+			s.Data.Servers = file.Servers
+		}
 		s.Data.Manifest = file.Manifest
 	case os.IsNotExist(err):
 		// a fresh home
@@ -247,6 +272,9 @@ func Open(f Files) (*Store, error) {
 	d.Config.FillMissing()
 	if d.Instances == nil {
 		d.Instances = map[string]*Instance{}
+	}
+	if d.Servers == nil {
+		d.Servers = map[string]*Server{}
 	}
 	if d.Accounts == nil {
 		d.Accounts = map[string]*Account{}
@@ -410,6 +438,7 @@ func (s *Store) Save() error {
 		StateVersion: StateVersion,
 		Accounts:     s.Data.Accounts,
 		Instances:    s.Data.Instances,
+		Servers:      s.Data.Servers,
 		Manifest:     s.Data.Manifest,
 	}
 	blob, err := toml.Marshal(state)
@@ -659,4 +688,23 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// GetServer returns a registered server, if it exists.
+func (s *Store) GetServer(name string) (*Server, bool) {
+	srv, ok := s.Data.Servers[name]
+	return srv, ok
+}
+
+// ServerNames lists registered servers, most recently started first.
+func (s *Store) ServerNames() []string {
+	names := sortedKeys(s.Data.Servers)
+	sort.SliceStable(names, func(i, j int) bool {
+		a, b := s.Data.Servers[names[i]], s.Data.Servers[names[j]]
+		if !a.StartedAt.Equal(b.StartedAt) {
+			return a.StartedAt.After(b.StartedAt)
+		}
+		return names[i] < names[j]
+	})
+	return names
 }

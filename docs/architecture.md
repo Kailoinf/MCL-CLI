@@ -134,6 +134,33 @@ they cannot disagree about what a version needs.
   before the hash, so a truncated file is reported as truncated rather than as a
   hash mismatch.
 
+## Servers
+
+A server-side install is a separate shape, not a variation of the client one: no
+account, no assets, no classpath, one directory and one world. It therefore gets
+its own small package, `internal/mcserver`, instead of a flag on `internal/launch`:
+
+* **One file to install.** `downloads.server` from the version JSON is the whole
+  install. Mojang's server jar is self-contained, and since 1.18 it is a bundler
+  that unpacks the libraries it needs into the server's own directory on first
+  start — no classpath assembly, no natives, no asset index.
+* **Java comes from the same rules.** `java.RequiredMajor` reads
+  `javaVersion.majorVersion` of the server's version, and a missing runtime is
+  installed the same way the client does it.
+* **Two text files, written once.** `eula.txt` and `server.properties` are created
+  when they are missing and never overwritten: the world, the port and the
+  difficulty belong to whoever runs the server. The EULA is printed and asked for,
+  never assumed — `--eula`/`--yes` skip the question, not the notice.
+* **Attached by default.** A server's console is its stdin and stdout, so a plain
+  `server start` inherits both; Ctrl+C then reaches the server, which saves the
+  world and exits. `--detach` redirects that output to
+  `<dir>/logs/console.log` (a detached child must not inherit mcli's stdout, or
+  the parent's caller would wait for a process that never ends) and starts the
+  child in its own session.
+* **Stopping is signalling.** `server stop` reads the recorded pid, checks
+  `/proc/<pid>/cmdline` still names this server's jar, sends SIGINT and waits for
+  the process to disappear. Never `kill -9`: the world is saved on the way out.
+
 ## Error handling style
 
 Errors are returned, not panicked. The CLI translates them once at the top

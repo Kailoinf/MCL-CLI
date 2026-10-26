@@ -10,7 +10,8 @@ and what is left. Update it in the same commit as the work.
 * `gofmt -l .` empty, `go vet ./...` clean, `go test ./...` green,
   `go build -o mcli .` green.
 * Commands implemented: `version help list create delete launch refresh config
-  java login logout account instance doctor repair` (`fix` aliases `repair`).
+  java login logout account instance doctor repair server` (`fix` aliases
+  `repair`, `srv` aliases `server`).
 
 ### Layout that the code assumes today
 
@@ -70,6 +71,20 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* A real server, start to stop, on this box (which is exactly what a headless
+  machine can still verify end to end): `server create mc-test --version 26.3
+  --port 25566 --eula` printed the EULA URL, wrote `eula.txt` and
+  `server.properties`; `server start --detach` fetched the 62,294,556-byte server
+  jar through BMCLAPI (exactly the size the JSON declares), the bundler unpacked
+  `libraries/` and `versions/` into the server's directory, the log reached
+  `Done (3.533s)`, the port listened on `*:25566`, and the world was created.
+  `server list` then showed `运行中` with the pid, `server stop` SIGINTed it and
+  returned in ~1s, `world/level.dat` was written on the way out, and a second
+  `stop` reported `没有在运行` (exit 1).
+* A detached server must not inherit mcli's stdout: an open pipe makes every
+  caller wait for a process that never ends. It now writes to
+  `logs/console.log` in its own session, so `start --detach` returns in 0.2s.
+
 * The no-compatibility decision is in force: the pre-TOML JSON database import,
   the v2 `state.toml` with inline tokens, `paths.LegacyDB` and every migration
   test are gone, and the store is no longer called a database anywhere
@@ -196,17 +211,13 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 
 ## Planned work, in the order the maintainer asked for it
 
-1. **Server-side launch** — `mcli server` next to the client commands: download
-   `downloads.server` from the version JSON, write `eula.txt` and a minimal
-   `server.properties`, then start it with the version's own Java major and
-   `-Xmx/-Xms`. A server needs no display, so this one *can* be verified end to
-   end on this box (start it, wait for "Done", stop it).
-2. **Fabric loader installation** — today mcli only *runs* an existing modded
+
+1. **Fabric loader installation** — today mcli only *runs* an existing modded
    profile. Installing means fetching the loader's version JSON from
    `meta.fabricmc.net` (`/v2/versions/loader/<game>/<loader>/profile/json`), which
    is already the shape `mcv.Version` parses, and merging it as a child of the
    game version.
-3. **Mod and resource-pack search** — mirror what PCL and Console Minecraft
+2. **Mod and resource-pack search** — mirror what PCL and Console Minecraft
    Launcher do: query Modrinth's and CurseForge's search APIs, list results, and
    install a hit into `mods/` or `resourcepacks/` of an instance. Keep the search
    itself thin (one query, one page, the fields that matter) — the interesting
@@ -247,3 +258,8 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 4. **`mcli doctor` for Java**: doctor reports the runtime a version needs and
    which one would be used, but does not yet check that the chosen runtime
    actually starts.
+5. **`server stop` on Windows**: a console interrupt cannot be delivered there, so
+   the command reports the pid as unstoppable and points at `--force` (Kill). A
+   Windows pass should decide whether to keep that or drive the console instead.
+6. **Servers in `doctor`**: health checks cover client instances only; a server's
+   jar, world, port and runtime could use the same line.

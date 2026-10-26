@@ -83,6 +83,10 @@ mcli java which 1.21.4                        # 这个版本需要/将使用哪�
 | `mcli instance rename <旧名> <新名>` | 实例改名，游戏目录一起搬 |
 | `mcli instance scan [--all]` | 列出磁盘上的版本目录：类型、JSON/JAR、父版本、是否已注册 |
 | `mcli instance import <版本> [--as <名称>] [--force]` | 接管已有安装（官方启动器 / PCL / HMCL / 整合包） |
+| `mcli server create <名称> --version <版本> [--java <路径>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <路径>] [--jvm-arg ...] [--eula]` | 注册服务器：独立目录、存档与端口；会打印 Minecraft EULA 并要求确认 |
+| `mcli server [list \| show <名称> \| set <名称> [--xmx] [--xms] [--port] [--java] [--version] \| delete <名称> [--keep-files] [--yes]]` | 查看与修改服务器 |
+| `mcli server start <名称> [--dry-run] [--detach] [--eula] [--port N]` | 缺少时下载服务端 jar 并启动；默认前台，控制台直接可用，Ctrl+C 会保存并停止 |
+| `mcli server stop <名称> [--force]` | 让后台运行的服务器退出：发送 SIGINT（等同 Ctrl+C），因此存档会被保存 |
 | `mcli doctor [<名称>] [--all] [--deep]` | 体检：本机环境（目录、Java、版本清单、日志）＋实例需要的每个文件；有问题时退出码 1 |
 | `mcli repair <名称> [--deep] [--force] [--dry-run]` | 只补齐 doctor 查出的缺失/损坏文件（--force 则按清单全部重下） |
 | `mcli delete <名称> [--keep-files] [--yes]` | 删除实例（连同存档） |
@@ -170,6 +174,21 @@ mcli 在 `~/.mcl-cli/` 里放五个小 TOML 文件：
 `session.toml`，都是 0600。账号列表与密钥文件分开，所以令牌文件缺失或来自别的机器时
 `mcli account list` 照样能用。不依赖系统密钥链，账号条目拷到别的机器也解不开；配置、
 实例、上次启动参数都不含密钥，可直接跨机器使用。
+
+## 服务器
+
+服务端和客户端放在一起管理，但它完全是另一套东西：服务器没有账号、没有资源文件、也不需要 classpath，所以 `mcli server` 只下一个文件然后跑起来。
+
+```sh
+mcli server create survival --version 26.3 --port 25566 --xmx 4G   # 打印 EULA 网址并要求按 Y
+mcli server start survival                                          # 首次约 60MB，之后前台运行
+mcli server stop survival                                           # 只有 --detach 启动的才需要手动停
+```
+
+* 目录是 `<minecraft_dir>/servers/<名称>`：jar、存档、`eula.txt`、`server.properties` 都在里面，别的操作不会碰它们；已存在的 `server.properties` 永不覆写。
+* EULA 不会替你同意：先打印网址，再问一次；`--eula` 或全局 `--yes` 只是跳过提问，不等于不提。
+* `--detach` 会后台启动并记录 pid，之后 `mcli server stop` 用它发信号。后台服务器的控制台输出在 `<dir>/logs/console.log`，服务器自己的日志在 `<dir>/logs/latest.log`。
+* Java 与客户端同一套规则：用版本 JSON 里的 `javaVersion.majorVersion`，缺了就由 mcli 安装。
 
 ## 镜像行为
 

@@ -86,6 +86,10 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli instance rename <old> <new>` | rename an instance and its game directory |
 | `mcli instance scan [--all]` | version directories found on disk, with their type, jar, parent and instance |
 | `mcli instance import <version> [--as <name>] [--force]` | adopt an existing install (official launcher, PCL, HMCL, a modded profile) |
+| `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg ...] [--eula]` | register a server: its own directory, world and port; the Minecraft EULA is printed and has to be accepted |
+| `mcli server [list \| show <name> \| set <name> [--xmx] [--xms] [--port] [--java] [--version] \| delete <name> [--keep-files] [--yes]]` | inspect and change servers |
+| `mcli server start <name> [--dry-run] [--detach] [--eula] [--port N]` | fetch the server jar if needed and start it; attached by default, so the console is yours and Ctrl+C saves and stops |
+| `mcli server stop <name> [--force]` | ask a detached server to stop: it gets SIGINT, exactly what Ctrl+C would send, so the world is saved |
 | `mcli doctor [<name>] [--all] [--deep]` | health check: the machine (home, java, manifest, log) and every file an instance needs; exit 1 when something is wrong |
 | `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the files doctor found missing or damaged (`--force` re-downloads everything planned) |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance (and its saves) |
@@ -181,6 +185,29 @@ that change least. There is no OS keychain, an account entry copied to another
 machine cannot be decrypted, and `mcli account list` still works without them.
 Everything else (config, instances, last launch) carries no secrets at all and
 works on any machine.
+
+## Servers
+
+Server-side installs live next to the client ones but are their own thing: a
+server has no account, no assets and no classpath, so `mcli server` downloads one
+file and runs it.
+
+```sh
+mcli server create survival --version 26.3 --port 25566 --xmx 4G   # prints the EULA URL, asks for Y
+mcli server start survival                                          # fetches ~60 MB once, then runs attached
+mcli server stop survival                                           # only needed for --detach runs
+```
+
+* The directory is `<minecraft_dir>/servers/<name>` — jar, world, `eula.txt` and
+  `server.properties` live there, and nothing else touches them. An existing
+  `server.properties` is never rewritten.
+* The EULA is never accepted for you: the URL is printed, the question is asked,
+  and `--eula` (or a global `--yes`) only skips the question, not the notice.
+* `--detach` starts the server in the background and records its pid, so
+  `mcli server stop` can signal it later. A detached server writes its console to
+  `<dir>/logs/console.log` and its own log to `<dir>/logs/latest.log`.
+* Java comes from the same runtime rules as the client: the version's
+  `javaVersion.majorVersion`, and mcli installs the runtime when it is missing.
 
 ## Mirror behaviour
 
