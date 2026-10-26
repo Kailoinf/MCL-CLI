@@ -1,0 +1,86 @@
+import { defineConfig } from "vitepress";
+
+// The documentation site. `docs/status.md` is published unchanged: it is the live
+// state of the project, meant to be read by people as well as by agents.
+export default defineConfig({
+  title: "mcli",
+  description:
+    "A command line Minecraft: Java Edition launcher: installs, launches, repairs and serves, with zero dependencies.",
+  cleanUrls: true,
+  srcExclude: ["**/README.md"],
+  themeConfig: {
+    nav: [
+      { text: "Guide", link: "/guide" },
+      { text: "Commands", link: "/commands" },
+      { text: "Architecture", link: "/architecture" },
+      { text: "Design", link: "/design-decisions" },
+      { text: "Status", link: "/status" },
+      { text: "Skill", link: "https://github.com/Kailoinf/MCL-CLI/blob/main/skill/SKILL.md" },
+    ],
+    sidebar: [
+      {
+        text: "Start here",
+        items: [
+          { text: "Guide", link: "/guide" },
+          { text: "Commands", link: "/commands" },
+        ],
+      },
+      {
+        text: "Inside",
+        items: [
+          { text: "Architecture", link: "/architecture" },
+          { text: "Design decisions", link: "/design-decisions" },
+        ],
+      },
+      {
+        text: "Project",
+        items: [
+          { text: "Live status", link: "/status" },
+          {
+            text: "Working on mcli (skill)",
+            link: "https://github.com/Kailoinf/MCL-CLI/blob/main/skill/SKILL.md",
+          },
+        ],
+      },
+    ],
+    outline: { level: [2, 3] },
+    search: { provider: "local" },
+    editLink: {
+      pattern: "https://github.com/Kailoinf/MCL-CLI/edit/main/docs/:path",
+      text: "Edit this page",
+    },
+    footer: {
+      message: "Released under the MIT license",
+      copyright: "Kailo",
+    },
+  },
+  locales: {
+    root: { label: "English", lang: "en" },
+    zh: {
+      label: "中文",
+      lang: "zh-CN",
+      link: "/zh/",
+      themeConfig: {
+        nav: [
+          { text: "指南", link: "/zh/" },
+          { text: "命令", link: "/commands" },
+          { text: "状态", link: "/status" },
+        ],
+        sidebar: [
+          {
+            text: "中文",
+            items: [{ text: "快速上手", link: "/zh/" }],
+          },
+          {
+            text: "参考（英文）",
+            items: [
+              { text: "Commands", link: "/commands" },
+              { text: "Architecture", link: "/architecture" },
+              { text: "Live status", link: "/status" },
+            ],
+          },
+        ],
+      },
+    },
+  },
+});
