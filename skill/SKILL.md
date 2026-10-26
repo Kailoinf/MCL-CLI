@@ -45,8 +45,16 @@ surprised by the code, the skill is stale.
 ## The docs site
 
 `docs/` is a VitePress site (`pnpm docs:dev` / `pnpm docs:build`, output in
-`docs/.vitepress/dist`); `docs/status.md` is published as-is, so keep it
-readable by people, not only by agents.
+`docs/.vitepress/dist`); `docs/status.md` is published as-is, so keep it readable
+by people, not only by agents.
+
+**Every page exists in both languages**: English at `docs/<page>.md`, Chinese at
+`docs/zh/<page>.md`, and the site's locale switcher lands on the pair. A change to
+one language is a change to both, in the same commit — that is AGENTS.md rule 5 and
+the maintainer asks for it explicitly. Before committing a docs change, diff the
+heading lists of the two files (`grep '^#' docs/<page>.md docs/zh/<page>.md`): equal
+headings means nothing was dropped in translation. CurseForge-grade facts (commands,
+paths, byte counts, commit hashes) stay verbatim in both.
 
 ## Non-negotiables
 
@@ -73,8 +81,10 @@ The CLI lives in `main.go`/`flags.go` (dispatch, argv parser), `commands.go`
 list/use/remove), `doctor_cmd.go` (doctor = report, repair = fetch exactly what
 doctor found; both read `mcv.Plan`, so they cannot disagree), `server_cmd.go` +
 `internal/mcserver` (server-side installs: one jar, one directory, one world),
-`fabric_cmd.go` + `internal/fabric` (Fabric loader profiles from
-`meta.fabricmc.net`),
+`loaders.go` (the mod loader as a *choice*: `--loader vanilla|fabric` on create and
+instance set), `fabric_cmd.go` + `internal/fabric` (discovery: the loader builds
+`meta.fabricmc.net` publishes), `mods_cmd.go` + `internal/modrinth` (search and
+install content),
 `launch_cmd.go`
 (launch + java selection + the per-run `--server`/`--fullscreen`/`--demo`
 switches), `app.go` (shared
@@ -229,6 +239,16 @@ The classpath must contain `net/fabricmc/fabric-loader`, `sponge-mixin` and the
 `org/ow2/asm` jars: Fabric's profile lists libraries as `name` + `url` + `sha1`
 with **no** `downloads` block, so a launcher that only reads `downloads.artifact`
 drops the whole loader and the game dies looking for its main class.
+
+Content from Modrinth, verified against the live API:
+
+```sh
+./mcli search sodium --version 1.21.4 --loader fabric     # one query, one page
+./mcli add sodium --instance <fabric instance> --yes      # downloads the matching file
+./mcli add sodium --instance <fabric instance> --yes      # second run: already intact
+./mcli mods <fabric instance>                             # what is installed
+./mcli add sodium --instance <vanilla instance>           # must refuse and name --loader fabric
+```
 
 Real end-to-end install (downloads ~55 MB plus a Java runtime):
 `./mcli create tiny --version rd-132211 && ./mcli launch tiny --yes` — the very
