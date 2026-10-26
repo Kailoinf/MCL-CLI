@@ -161,8 +161,33 @@ mcli update modded --pack                # move to the newest version that fits
 ```
 
 A pack update is two lists: the files the new version wants, and the ones the old
-version added that it no longer does. The second list is why the pack's file list is
-recorded when it is installed — mcli compares against what the pack itself put
-there, never against a directory listing, so a file you dropped in by hand can
-never be removed. A file that changed *after* the pack installed it is kept too and
-reported: it is yours now.
+version added that it no longer does. The second list is why each pack file is recorded
+when the pack is installed — with the digest the pack declared for it. mcli compares
+against that record, never against a directory listing, so a file you dropped in by
+hand can never be removed; and a file is deleted only while its digest still
+matches, so one you have replaced since is kept and reported instead.
+
+## Platforms
+
+mcli is one Go binary with no dependencies, and it compiles and is developed as a
+plain Go binary for every platform below. `./scripts/check-cross.sh` builds all of
+them from the repository root, and a target that stops compiling is treated as a bug.
+
+| | Linux | Windows | macOS | note |
+| --- | --- | --- | --- | --- |
+| install, launch, instances, accounts | yes | yes | yes | the core |
+| mods, resource packs, modpacks | yes | yes | yes | Modrinth needs no key |
+| automatic heap sizing | yes | yes | yes | Windows asks kernel32, macOS half the physical total |
+| servers, foreground and detached | yes | yes | yes | detached writes `logs/console.log` |
+| `server attach` / `server cmd` | yes | **no** | yes | needs a FIFO for the server's input |
+| graceful `server stop` | yes | **no** | yes | Windows: `--force` kills it, autosave keeps the world |
+| free-space line in `doctor` | yes | yes | yes | Windows asks kernel32 |
+
+Where something is missing, mcli says so and names the alternative rather than
+failing with a low-level error: on Windows, `server attach` tells you to run the
+server in the foreground, and a graceful stop says to use `--force`.
+
+What has been *run*, rather than compiled, is listed in
+[the status page](/status): everything except Windows and macOS is verified on
+Linux, and Windows/macOS are compile-checked plus covered by tests that run
+anywhere (the Windows classpath separator and quoting, for instance).

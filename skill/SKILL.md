@@ -65,7 +65,9 @@ paths, byte counts, commit hashes) stay verbatim in both.
   string uses different printf verbs — verb *order* counts, not just the set.
 * Zero third-party modules. `go build` with stdlib only — ask the user before
   adding any dependency, TOML and SQLite included.
-* `gofmt -l .` empty, `go vet ./...` clean, small commits pushed as you go.
+* `gofmt -l .` empty, `go vet ./...` clean, `./scripts/check-cross.sh` all green
+  (the maintainer runs mcli from Git Bash on Windows, so a Linux-only build is not
+  finished), small commits pushed as you go.
 * Docs are part of the change: README.md + README.zh-CN.md + `docs/*` (and
   AGENTS.md only with approval) must match the code in the same commit.
 * Never print credential values; show paths, lengths or counts.
@@ -87,6 +89,7 @@ instance set), `fabric_cmd.go` + `internal/fabric` (discovery: the loader builds
 install content),
 `internal/mrpack` (reading a `.mrpack`: the file list, the loader it wants, the
 overrides it ships), `update_cmd.go` (moving an instance to another game version),
+`scripts/check-cross.sh` (builds every claimed target),
 `launch_cmd.go`
 (launch + java selection + the per-run `--server`/`--fullscreen`/`--demo`
 switches), `app.go` (shared
@@ -161,7 +164,7 @@ Game root `~/.minecraft` with `libraries/`, `assets/`, `versions/<version>/`
 ## Verification recipe
 
 ```sh
-cd /root/mcli && gofmt -l . && go vet ./... && go test ./... && go build -o mcli .
+cd /root/mcli && gofmt -l . && go vet ./... && go test ./... && ./scripts/check-cross.sh | tail -1 && go build -o mcli .
 export MCLI_HOME=/root/.hermes/cache/scratch/mtest/home MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest/mc
 export LANG=en_US.UTF-8   # exercise the English catalog; drop it for Chinese
 ./mcli version && ./mcli help && ./mcli config list
@@ -309,6 +312,30 @@ Real end-to-end install (downloads ~55 MB plus a Java runtime):
 `./mcli create tiny --version rd-132211 && ./mcli launch tiny --yes` — the very
 first public version is the smallest (client 0 MB, assets ~50 MB).
 
+## Platform code
+
+The maintainer runs mcli from Git Bash on Windows; the development box is Linux.
+So:
+
+* **Platform-specific code lives in its own file with a build tag** —
+  `internal/launch/mem_{linux,darwin,windows,other}.go`, `disk_{unix,windows}.go`,
+  `internal/mcserver/console_{unix,windows}.go`, `internal/launch/server_*.go`. No
+  `if runtime.GOOS ==` scattered inside shared functions.
+* **A target that stops compiling is a bug, not a footnote**: run
+  `./scripts/check-cross.sh` (linux amd64/arm64/386, windows amd64/arm64, darwin
+  amd64/arm64, freebsd amd64). 32-bit targets have caught a real one already —
+  Microsoft's XSTS error codes are larger than an int there.
+* **Make the platform-shaped logic injectable and test it from Linux.** The
+  classpath separator is an option (`launch.Options.PathSeparator`), the memory
+  parser is a function of its own, and `internal/launch/windows_args_test.go`
+  asserts the Windows shape (classpath joined with `;`, paths with spaces quoted)
+  without a Windows machine.
+* **Where a feature cannot work on a platform, refuse with the alternative named**,
+  in both catalogs: Windows says "run the server in the foreground" for `attach`
+  and "use `--force`" for a graceful stop. Never leave a low-level error.
+* **Keep the docs' claims honest**: README and `docs/guide.md` carry the platform
+  table, `docs/status.md` says what was *run* versus merely compiled.
+
 ## Pitfalls
 
 * Big outputs: never pipe a long-running download through a pager or
@@ -351,6 +378,8 @@ installation are done (`mcli server create/list/show/set/delete/start/stop/attac
 done as well: `mcli search`/`add`/`mods` against Modrinth (no API key needed), and
 `add <pack>` installs a `.mrpack` — its file list, its overrides and the loader it
 was built for — after checking the pack's game version against the instance. What
-is left: CurseForge (per-user API key) and CurseForge-format packs. Game versions move with `mcli update <instance>` (newest
+is left: CurseForge (per-user API key) and CurseForge-format packs. Platforms are
+documented and compile-checked; what is *not* verified is running mcli on Windows
+itself. Game versions move with `mcli update <instance>` (newest
 release by default, loader kept, plan-only with `--dry-run`); the version an
 instance leaves behind keeps its files.

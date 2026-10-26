@@ -321,6 +321,14 @@ func (e *HTTPError) ErrorCode() string {
 	return ""
 }
 
+// XSTS error codes, named because a bare seven-digit number in a switch says
+// nothing about what Microsoft means by it.
+const (
+	xstsNoAccount     int64 = 2148916233
+	xstsRegionBlocked int64 = 2148916235
+	xstsChildAccount  int64 = 2148916238
+)
+
 func asHTTPError(err error, out **HTTPError) bool {
 	if he, ok := err.(*HTTPError); ok {
 		*out = he
@@ -412,17 +420,19 @@ func (c *Client) XSTS(xblToken string) (token, uhs string, err error) {
 		var he *HTTPError
 		if ok := asHTTPError(err, &he); ok {
 			var payload struct {
-				XErr     int    `json:"XErr"`
+				XErr     int64  `json:"XErr"`
 				Message  string `json:"Message"`
 				Redirect string `json:"Redirect"`
 			}
 			_ = json.Unmarshal([]byte(he.Body), &payload)
+			// These codes are larger than a 32-bit int, so they are compared as
+			// int64: that is what made every 32-bit build fail to compile.
 			switch payload.XErr {
-			case 2148916233:
+			case xstsNoAccount:
 				return "", "", fmt.Errorf("%s", i18n.T("auth.xsts_no_account"))
-			case 2148916235:
+			case xstsRegionBlocked:
 				return "", "", fmt.Errorf("%s", i18n.T("auth.xsts_region"))
-			case 2148916238:
+			case xstsChildAccount:
 				return "", "", fmt.Errorf("%s", i18n.T("auth.xsts_child"))
 			}
 			return "", "", fmt.Errorf("%s", i18n.T("auth.xsts_failed", err, payload.XErr))

@@ -79,6 +79,21 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* 一次平台梳理 —— 维护者是在 Windows 的 Git Bash 里跑 mcli 的，只在开发机上能用的启动器算不上启动器。
+  发现并修掉的东西，以及现在靠什么检查：
+  * **所有 32 位目标都编译不过** —— 微软返回的 XSTS 错误码（2148916233 等）放不进 32 位 int。
+    现在它们是具名的 int64 常量，`linux/386`、`windows/386`、`linux/arm` 都能编译。
+  * 自动计算堆大小只在 Linux 上生效（读 `/proc/meminfo`）。现在 Windows 问 kernel32
+    （`GlobalMemoryStatusEx`），macOS 问 sysctl（`hw.memsize`，可用量取物理内存一半 —— 因为
+    macOS 的「空闲内存」含义不同）。解析单独成函数，并有测试覆盖没有 MemAvailable 的老内核和垃圾输入。
+  * `doctor` 的可用空间一行在 Windows 上被省略；现在它问 kernel32（`GetDiskFreeSpaceExW`）。
+  * classpath 分隔符变成可注入的（`launch.Options.PathSeparator`），于是 Windows 的形状
+    —— 用 `;` 连接、带空格的路径要加引号 —— 可以在 Linux 上测。
+  * `server attach`/`cmd` 与优雅 `server stop` 在 Windows 上本来就诚实拒绝并给出替代方案；
+    现在这写进了文档，而不是留给用户自己踩。
+* `scripts/check-cross.sh` 一次性构建全部八个声称支持的目标（linux amd64/arm64/386、
+  windows amd64/arm64、darwin amd64/arm64、freebsd amd64）。能编译不等于行为正确 ——
+  文档里把两者分得很清楚。
 * 整合包更新：`mcli update <实例> --pack`（`add` 与 `update` 都有 `--pack-version`）。用真实整合包
   验证：装上 beta.1，再更新到 beta.2 —— 收回 7 个文件、新增 6 个、变更 1 个。收回清单与我从两份
   已发布索引独立算出的差异完全一致（同样是那 7 条路径）；更新前被我手动替换掉的那个文件连同内容
@@ -192,9 +207,10 @@
 * 真实登录：需要人在浏览器里用一个微软账号操作。绝不要尝试，绝不要索要凭据。
 * 真实启动游戏：这台机器是无头的，而且维护者明确要求不要尝试启动。正确性由
   `launch --dry-run` 的输出判断（classpath、占位符、natives 路径、游戏参数）。
-* Windows：维护者在 Windows 上从 UCRT64（Git Bash）运行 mcli；上面所有内容都是
-  在 Linux 上验证的。只有 Windows 才有的风险：natives 参数里的路径分隔符、对
-  含空格的实例名加引号，以及 `minecraft_dir` 里的盘符路径。
+* Windows 与 macOS 的实际行为：两者都能编译（`scripts/check-cross.sh`），能在 Linux 上测的
+  平台形状部分也都测了（classpath 分隔符、带空格路径的引号、内存解析）。**没有**验证的是在
+  Windows 本身上运行 mcli —— 真实启动、后台服务端的控制台那条路径、以及进程运行时的 Windows
+  路径处理。
 * 维护者自己的 `.minecraft` 一个字节都没被写：归档被解到 scratch，测试用的所有
   home 都位于 `/root/.hermes/cache/scratch/` 下（`mtest`、`mtest2`、
   `mcuser-home`）。

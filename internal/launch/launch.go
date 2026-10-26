@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -39,6 +38,10 @@ type Options struct {
 	// MemoryPercent is the share of available memory used when sizing the heap
 	// automatically (config `auto_memory_percent`).
 	MemoryPercent int
+	// PathSeparator joins the classpath. Empty means the platform's own separator
+	// (":" everywhere but Windows, where Java wants ";"). It is settable so that
+	// the Windows shape can be tested from any platform.
+	PathSeparator string
 	ExtraJVMArgs  []string
 	ExtraGameArgs []string
 	// Server asks the game to join "host[:port]" right away — either with the
@@ -109,7 +112,10 @@ func Prep(o Options) (*Command, error) {
 	env := mcv.EnvCurrent(mcv.FeatureSet(o.Width > 0 && o.Height > 0, features))
 
 	cpEntries := mcv.ClasspathEntries(v, env, libsDir, clientJar)
-	sep := string(filepath.ListSeparator)
+	sep := o.PathSeparator
+	if sep == "" {
+		sep = string(filepath.ListSeparator)
+	}
 	cp := mcv.ClasspathString(cpEntries, sep)
 
 	logConfig := ""
@@ -326,17 +332,11 @@ func mib(bytes int64) string {
 	return strconv.FormatInt(bytes/(1<<20), 10) + "M"
 }
 
-// systemMemory reads physical and available memory where the platform allows
-// it. Other platforms fall back to a conservative guess.
-func systemMemory() (total, available int64, ok bool) {
-	if runtime.GOOS != "linux" {
-		return 0, 0, false
-	}
-	raw, err := os.ReadFile("/proc/meminfo")
-	if err != nil {
-		return 0, 0, false
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
+// parseMeminfo reads the two lines of /proc/meminfo that size the heap. Values
+// there are in kibibytes. A missing MemAvailable is not an error: it means an old
+// kernel, and half the physical memory is the honest fallback.
+func parseMeminfo(body string) (total, available int64, ok bool) {
+	for _, line := range strings.Split(body, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue

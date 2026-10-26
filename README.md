@@ -261,6 +261,20 @@ logged once. Verified mappings:
 | `resources.download.minecraft.net/<aa>/<h>` | `<endpoint>/assets/<aa>/<h>` |
 | `launchermeta.mojang.com/v1/products/java-runtime/<…>/all.json` | `<endpoint>/v1/products/java-runtime/…` |
 
+## Platforms
+
+One Go binary, no dependencies. Everything compiles for the list below, and
+`./scripts/check-cross.sh` checks that from the repository root:
+
+| | Linux | Windows | macOS |
+| --- | --- | --- | --- |
+| install, launch, instances, accounts, mods, packs, servers | yes | yes | yes |
+| `server attach` / `server cmd`, graceful `server stop` | yes | no — run the server in the foreground, or stop with `--force` | yes |
+
+Where a feature cannot work, mcli says so and names the alternative instead of
+failing with a low-level error. What has actually been *run* (as opposed to
+compiled) is listed in [`docs/status.md`](docs/status.md).
+
 ## Development
 
 ```sh

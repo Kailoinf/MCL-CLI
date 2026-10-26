@@ -2,7 +2,28 @@
 
 package main
 
-// freeBytes is not available on Windows through the standard library: reporting
-// the instance's own size is better than pulling in a dependency for a
-// diagnostic line, so the free-space line is simply omitted.
-func freeBytes(path string) (uint64, bool) { return 0, false }
+import (
+	"syscall"
+	"unsafe"
+)
+
+// freeBytes reports the bytes available to the caller on the volume holding path,
+// which is what the doctor line means on Windows too.
+func freeBytes(path string) (uint64, bool) {
+	ptr, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, false
+	}
+	proc := syscall.NewLazyDLL("kernel32.dll").NewProc("GetDiskFreeSpaceExW")
+	var freeToCaller, total, totalFree uint64
+	ok, _, _ := proc.Call(
+		uintptr(unsafe.Pointer(ptr)),
+		uintptr(unsafe.Pointer(&freeToCaller)),
+		uintptr(unsafe.Pointer(&total)),
+		uintptr(unsafe.Pointer(&totalFree)),
+	)
+	if ok == 0 {
+		return 0, false
+	}
+	return freeToCaller, true
+}

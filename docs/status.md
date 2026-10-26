@@ -75,6 +75,27 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* A platform pass, because the maintainer runs mcli from Git Bash on Windows and a
+  launcher that only works where it was written is not much of a launcher. What was
+  found and fixed, and what it is now checked by:
+  * **every 32-bit target failed to compile** — the XSTS error codes Microsoft
+    returns (2148916233, …) do not fit in a 32-bit int. They are named int64
+    constants now, and `linux/386`, `windows/386` and `linux/arm` build.
+  * automatic heap sizing only worked on Linux (`/proc/meminfo`). It now also asks
+    kernel32 on Windows (`GlobalMemoryStatusEx`) and sysctl on macOS (`hw.memsize`,
+    with half the physical total as the available figure, because macOS's "free"
+    memory means something else). The parsing is a function of its own with tests
+    for an old kernel without MemAvailable and for junk input.
+  * `doctor`'s free-space line was omitted on Windows; it asks kernel32
+    (`GetDiskFreeSpaceExW`) there now.
+  * the classpath separator is settable (`launch.Options.PathSeparator`), so the
+    Windows shape — classpath joined with `;`, quoted paths — is tested from Linux.
+  * `server attach`/`cmd` and graceful `server stop` already refused honestly on
+    Windows with the alternative named; that is now written down in the docs rather
+    than left for someone to discover.
+* `scripts/check-cross.sh` builds all eight claimed targets at once (linux amd64,
+  arm64 and 386; windows amd64 and arm64; darwin amd64 and arm64; freebsd amd64).
+  Compiling is not behaving — the docs say which is which.
 * Modpack updating: `mcli update <instance> --pack` (and `--pack-version` on both
   `add` and `update`). Verified against the real pack: beta.1 installed, then moved
   to beta.2 — 7 files taken back, 6 added, 1 changed. The removal list was checked
@@ -229,10 +250,11 @@ and what is left. Update it in the same commit as the work.
 * A real game launch: this box is headless, and the maintainer asked explicitly
   that launches not be attempted. Correctness is judged from
   `launch --dry-run` output (classpath, placeholders, natives paths, game args).
-* Windows: the maintainer runs mcli from UCRT64 (Git Bash) on Windows; all of the
-  above was verified on Linux. Windows-only risks: path separators inside natives
-  arguments, quoting an instance name that contains a space, and drive-letter
-  paths in `minecraft_dir`.
+* Windows and macOS behaviour: both compile (`scripts/check-cross.sh`), and the
+  platform-shaped parts that can be tested from Linux are tested (the classpath
+  separator, quoting a path with a space, and the memory parsing). What is *not*
+  verified is running mcli on Windows itself — a real launch there, the detached
+  server's console path, and Windows path handling under a running process.
 * Nothing of the maintainer's own `.minecraft` was written to: the archive was
   unpacked into scratch and all homes used for testing live under
   `/root/.hermes/cache/scratch/` (`mtest`, `mtest2`, `mcuser-home`).

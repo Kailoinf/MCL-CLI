@@ -234,6 +234,19 @@ mcli instance set modded --loader vanilla                    # 也能切回原�
 | `resources.download.minecraft.net/<两位>/<hash>` | `<endpoint>/assets/<两位>/<hash>` |
 | `launchermeta.mojang.com/v1/products/java-runtime/<…>/all.json` | `<endpoint>/v1/products/java-runtime/…` |
 
+## 支持的平台
+
+单个 Go 二进制、零依赖。下面这些平台都能编译，`./scripts/check-cross.sh` 会在仓库根目录把它们
+全部构建一遍：
+
+| | Linux | Windows | macOS |
+| --- | --- | --- | --- |
+| 安装、启动、实例、账号、模组、整合包、服务端 | 可以 | 可以 | 可以 |
+| `server attach` / `server cmd`、优雅 `server stop` | 可以 | 不可以 —— 请前台运行服务端，或用 `--force` 停止 | 可以 |
+
+做不了的功能，mcli 会直说并给出替代做法，而不是抛一个看不懂的底层错误。哪些是**真跑过**（而不是
+只编译过）的，写在 [`docs/status.md`](docs/status.md) 里。
+
 ## 开发
 
 ```sh
