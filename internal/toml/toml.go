@@ -54,6 +54,35 @@ func Marshal(v interface{}) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
+// omitEmpty reports whether a field's tag asks for empty values to be skipped.
+func omitEmpty(f reflect.StructField) bool {
+	return strings.Contains(f.Tag.Get("toml"), "omitempty")
+}
+
+// isEmptyValue is the zero test that decides what "empty" means for omitempty:
+// empty strings and slices, false, zero numbers, nil pointers, and a zero time.
+func isEmptyValue(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.String, reflect.Slice, reflect.Map, reflect.Array:
+		return v.Len() == 0
+	case reflect.Bool:
+		return !v.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return v.Uint() == 0
+	case reflect.Float32, reflect.Float64:
+		return v.Float() == 0
+	case reflect.Ptr, reflect.Interface:
+		return v.IsNil()
+	case reflect.Struct:
+		if ts, ok := v.Interface().(time.Time); ok {
+			return ts.IsZero()
+		}
+	}
+	return false
+}
+
 // marshalStruct writes root scalars (when isRoot) and every sub-table.
 func marshalStruct(b *strings.Builder, rv reflect.Value, path []string, isRoot bool) error {
 	t := rv.Type()
@@ -74,6 +103,12 @@ func marshalStruct(b *strings.Builder, rv reflect.Value, path []string, isRoot b
 		}
 		key := fieldKey(f)
 		if key == "-" {
+			continue
+		}
+		if omitEmpty(f) && isEmptyValue(fv) {
+			// An "empty" optional value is left out rather than written as "" or
+			// []: these files are meant to be read by people, and a key that says
+			// nothing is noise a reader has to explain.
 			continue
 		}
 		text, ok, err := scalarText(fv)
@@ -123,6 +158,25 @@ func marshalStruct(b *strings.Builder, rv reflect.Value, path []string, isRoot b
 			}
 			keys := fv.MapKeys()
 			sort.Slice(keys, func(i, j int) bool { return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface()) })
+			// A map of plain values is one table of keys; a map of structs is one
+			// table per key. Writing a scalar map's keys into the parent table
+			// would silently attach them to the wrong place.
+			if elem := fv.Type().Elem(); elem.Kind() != reflect.Struct &&
+				!(elem.Kind() == reflect.Ptr && elem.Elem().Kind() == reflect.Struct) {
+				b.WriteString("\n")
+				fmt.Fprintf(b, "[%s]\n", joinPath(append(path, name)))
+				for _, k := range keys {
+					text, ok, err := scalarText(fv.MapIndex(k))
+					if err != nil {
+						return err
+					}
+					if !ok {
+						continue
+					}
+					fmt.Fprintf(b, "%s = %s\n", quoteKey(fmt.Sprint(k.Interface())), text)
+				}
+				continue
+			}
 			for _, k := range keys {
 				mv := fv.MapIndex(k)
 				if mv.Kind() == reflect.Ptr {
@@ -131,13 +185,27 @@ func marshalStruct(b *strings.Builder, rv reflect.Value, path []string, isRoot b
 					}
 					mv = mv.Elem()
 				}
-				if mv.Kind() != reflect.Struct {
-					continue
-				}
-				b.WriteString("\n")
-				fmt.Fprintf(b, "[%s]\n", joinPath(append(path, name, fmt.Sprint(k.Interface()))))
-				if err := marshalStruct(b, mv, append(path, name, fmt.Sprint(k.Interface())), false); err != nil {
-					return err
+				switch {
+				case mv.Kind() == reflect.Struct:
+					b.WriteString("\n")
+					fmt.Fprintf(b, "[%s]\n", joinPath(append(path, name, fmt.Sprint(k.Interface()))))
+					if err := marshalStruct(b, mv, append(path, name, fmt.Sprint(k.Interface())), false); err != nil {
+						return err
+					}
+				default:
+					// A map of plain values becomes a table of its own:
+					//   [<path>.name]
+					//   "key" = "value"
+					// Writing nothing here would drop the data on the floor, which
+					// is exactly what a state file must not do.
+					text, ok, err := scalarText(mv)
+					if err != nil {
+						return err
+					}
+					if !ok {
+						continue
+					}
+					fmt.Fprintf(b, "%s = %s\n", quoteKey(fmt.Sprint(k.Interface())), text)
 				}
 			}
 		}

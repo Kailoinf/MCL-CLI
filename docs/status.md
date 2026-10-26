@@ -75,6 +75,33 @@ and what is left. Update it in the same commit as the work.
   --port 25566 --demo --fullscreen` appended to its `minecraftArguments`. A bad
   address (`host:abc`) exits 2, and a launch without the switches adds none of
   them. `internal/launch/server_test.go` pins all of it.
+* Modpack updating: `mcli update <instance> --pack` (and `--pack-version` on both
+  `add` and `update`). Verified against the real pack: beta.1 installed, then moved
+  to beta.2 — 7 files taken back, 6 added, 1 changed. The removal list was checked
+  against a diff computed independently from the two published indexes (same 7
+  paths), and a file replaced by hand before the update survived with its contents
+  while the pack's own six were deleted. What makes that exact is the record: each
+  pack file is stored with the digest the pack declared, and a file is deleted only
+  while its digest still matches. The first attempt compared modification times
+  instead and kept three files it should have deleted, which is how this ended up
+  digest-based.
+* `add <pack>` --pack-version picks a named pack version; a pack version that fits
+  the instance's game version is preferred over merely the newest one, and an
+  instance already on the newest fitting pack says so.
+* Two bugs in the TOML writer, both found by writing state that had to survive:
+  * a map of plain values nested inside a struct was **dropped entirely** — no
+    error, no key, the data simply was not there. That shape is what records pack
+    files, so it is now written as its own table (`[instances."x".pack_files]`),
+    with `internal/toml/nested_map_test.go` pinning the round trip
+  * `omitempty` was ignored, so every optional field was written as `""`, `[]` or a
+    zero: `java = ""`, `xmx = ""`… in every instance. Empty optional values are now
+    left out, which is what the tag always claimed
+* A consequence worth knowing: state.toml carries one shape and no migration (a
+  standing decision), so a file written by an earlier build — pack files as an
+  array instead of a table — makes mcli stop with
+  `instances.<name>.pack_files: unsupported field kind map` rather than guess. The
+  message names the field.
+* `instance show` gained a row for the pack an instance was built from.
 * `mcli update` moves an instance to another game version and was verified three
   ways: `update modtest --version 1.21.4` fetched 189 files / 97.7 MiB (a version
   that was not on this box at all — client jar, libraries, natives, assets) and
@@ -309,10 +336,9 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 
 1. **CurseForge**: Modrinth needs no key and is wired; CurseForge needs an API key
    per user, so it would need a config key and a key-shaped error path. Not started.
-2. **CurseForge packs and pack updates**: `.mrpack` packs install; a pack that
-   ships as a CurseForge zip, and updating an instance to a newer pack version,
-   are not implemented. (Updating the *game* version is `mcli update` now; what is
-   still missing there is updating a pack inside an instance.)
+2. **CurseForge packs**: `.mrpack` packs install and update; a pack that ships as a
+   CurseForge zip is not implemented. Updating both the game version and the pack
+   inside an instance works (`mcli update`, `mcli update --pack`).
 
 ## Conventions (detail AGENTS.md deliberately leaves out)
 

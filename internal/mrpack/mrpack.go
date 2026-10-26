@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Kailoinf/MCL-CLI/internal/dl"
@@ -152,6 +153,52 @@ func Destination(instanceDir, packPath string) (string, error) {
 		return "", fmt.Errorf("the pack names a path outside the instance: %q", packPath)
 	}
 	return dest, nil
+}
+
+// Paths lists the instance-relative paths an index wants, client side only, so a
+// later update can compare two pack versions.
+func Paths(idx Index) []string {
+	out := make([]string, 0, len(idx.Files))
+	for _, f := range idx.Files {
+		if !f.ClientWanted() || len(f.Downloads) == 0 {
+			continue
+		}
+		out = append(out, f.Path)
+	}
+	return out
+}
+
+// Digests maps each client-side path a pack wants to the SHA-1 it declares. It is
+// what gets recorded when a pack is installed: the digest, not just the name, is
+// what lets a later update leave someone's own build of the same file alone.
+func Digests(idx Index) map[string]string {
+	out := map[string]string{}
+	for _, f := range idx.Files {
+		if !f.ClientWanted() || len(f.Downloads) == 0 {
+			continue
+		}
+		out[f.Path] = f.SHA1()
+	}
+	return out
+}
+
+// Removed lists the files an older pack installed that the newer one no longer
+// wants. Paths are compared as the packs wrote them, which is what makes the
+// answer trustworthy: anything the user dropped in by hand is not in the old list
+// and is therefore never touched.
+func Removed(installed map[string]string, next Index) []string {
+	wanted := map[string]bool{}
+	for _, p := range Paths(next) {
+		wanted[p] = true
+	}
+	var out []string
+	for p := range installed {
+		if !wanted[p] {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TotalBytes is how much the pack's files weigh, for the confirmation prompt.

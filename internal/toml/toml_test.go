@@ -295,3 +295,55 @@ func TestQuotedKeysWithDots(t *testing.T) {
 		t.Fatalf("quoted key not decoded: %+v", doc.Inst)
 	}
 }
+
+func TestOmitEmptySkipsWhatSaysNothing(t *testing.T) {
+	type inner struct {
+		Kept  string `toml:"kept,omitempty"`
+		Count int    `toml:"count,omitempty"`
+	}
+	type doc struct {
+		Name    string   `toml:"name"`
+		Empty   string   `toml:"empty,omitempty"`
+		Always  string   `toml:"always"`
+		Args    []string `toml:"args,omitempty"`
+		Version int      `toml:"state_version"`
+		Table   inner    `toml:"inner"`
+	}
+	out, err := Marshal(doc{Name: "x", Always: "", Args: nil, Version: 1, Table: inner{Kept: "yes"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	if strings.Contains(text, "empty =") || strings.Contains(text, "args =") || strings.Contains(text, "count =") {
+		t.Errorf("omitempty fields were written anyway:\n%s", text)
+	}
+	if !strings.Contains(text, `name = "x"`) {
+		t.Errorf("a plain field went missing:\n%s", text)
+	}
+	if !strings.Contains(text, "state_version = 1") {
+		t.Errorf("a non-optional number went missing:\n%s", text)
+	}
+	// a field without the tag still writes its empty value, which is how a
+	// required-but-empty setting stays visible
+	if !strings.Contains(text, `always = ""`) {
+		t.Errorf("a field without omitempty should still be written:\n%s", text)
+	}
+	if !strings.Contains(text, `kept = "yes"`) {
+		t.Errorf("a non-empty value inside a table went missing:\n%s", text)
+	}
+}
+
+func TestOmitEmptyKeepsWhatIsThere(t *testing.T) {
+	type doc struct {
+		Args []string `toml:"args,omitempty"`
+		Wait bool     `toml:"wait,omitempty"`
+	}
+	out, err := Marshal(doc{Args: []string{"a", "b"}, Wait: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	if !strings.Contains(text, `args = ["a", "b"]`) || !strings.Contains(text, "wait = true") {
+		t.Errorf("values that are not empty were dropped:\n%s", text)
+	}
+}

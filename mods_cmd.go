@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -88,12 +91,13 @@ func (a *App) cmdSearch(args []string) int {
 // cmdAdd installs the file of one project into an instance.
 func (a *App) cmdAdd(args []string) int {
 	f, err := parseFlags("add", args, map[string]flagSpec{
-		"instance": {takesValue: true},
-		"version":  {takesValue: true},
-		"loader":   {takesValue: true},
-		"type":     {takesValue: true},
-		"dry-run":  {},
-		"yes":      {},
+		"instance":     {takesValue: true},
+		"version":      {takesValue: true},
+		"loader":       {takesValue: true},
+		"type":         {takesValue: true},
+		"pack-version": {takesValue: true},
+		"dry-run":      {},
+		"yes":          {},
 	})
 	if err != nil {
 		return a.fatal(err)
@@ -133,7 +137,7 @@ func (a *App) cmdAdd(args []string) int {
 	if strings.EqualFold(projectType, "modpack") {
 		// A pack is not a file that belongs in a subdirectory: it is a list of
 		// files, a loader and a game version. That is a different install.
-		return a.addModpack(inst, project, meta, f.boolean("dry-run"))
+		return a.installPack(inst, project, meta, f.str("pack-version", ""), f.boolean("dry-run"), false)
 	}
 	subdir, ok := modrinth.DirFor(projectType)
 	if !ok {
@@ -407,64 +411,90 @@ func offsetHint(o modrinth.SearchOptions, shown, total int) string {
 	return i18n.T("mod.hint_more", o.Offset+shown)
 }
 
-// addModpack installs a Modrinth modpack: its file list, its overrides, and the
-// loader it was built for. A pack decides its own game version, so the instance
-// has to match — installing a 1.21.4 pack into a 1.20.1 instance produces a game
-// that cannot start, and guessing on the user's behalf would be worse than saying so.
-func (a *App) addModpack(inst *store.Instance, project string, meta modrinth.Project, dryRun bool) int {
-	versions, err := modrinth.Versions(a.Policy(), project, "", "")
+// packInstall is one resolved pack: which version, what it wants on disk, and the
+// file already fetched so its index could be read.
+type packInstall struct {
+	project  string
+	meta     modrinth.Project
+	version  modrinth.Version
+	packPath string
+	cleanup  func()
+	idx      mrpack.Index
+	items    []dl.Item
+	total    int64
+	removed  []string
+}
+
+// resolvePack picks the pack version to install and reads its index. It is the
+// part both installing a pack and updating one need; everything that changes the
+// instance happens afterwards, so a dry run can stop right here.
+func (a *App) resolvePack(inst *store.Instance, project, selector string, dryRun, updating bool) (*packInstall, int, bool) {
+	spec, err := a.instanceSpecOf(inst, "", "")
 	if err != nil {
-		return a.fatal(err)
+		return nil, a.fatal(err), false
+	}
+	// Ask for a pack version that fits this instance, not merely the newest one:
+	// a pack that still publishes a build for the instance's game version should
+	// install that build rather than refuse.
+	versions, err := modrinth.Versions(a.Policy(), project, spec.Game, "")
+	if err != nil {
+		return nil, a.fatal(err), false
+	}
+	if len(versions) == 0 && spec.Game != "" && selector == "" {
+		// Nothing fits: ask again without the filter so the refusal can say what
+		// the pack is actually for instead of only "no version found".
+		if all, err := modrinth.Versions(a.Policy(), project, "", ""); err == nil && len(all) > 0 {
+			versions = all
+		}
 	}
 	if len(versions) == 0 {
-		return a.fatal(fmt.Errorf("%s", i18n.T("mod.no_version", meta.Title, "", "")))
+		return nil, a.fatal(fmt.Errorf("%s", i18n.T("mod.no_version", project, spec.Game, ""))), false
 	}
-	chosen := versions[0]
+	chosen, ok := pickPackVersion(versions, selector)
+	if !ok {
+		return nil, a.fatal(fmt.Errorf("%s", i18n.T("upd.pack_no_version", project, selector))), false
+	}
 	file, ok := modrinth.PickFile(chosen)
 	if !ok {
-		return a.fatal(fmt.Errorf("%s", i18n.T("mod.no_file", meta.Title)))
+		return nil, a.fatal(fmt.Errorf("%s", i18n.T("mod.no_file", chosen.Name))), false
 	}
 
 	// The index lives inside the .mrpack, so the pack has to be fetched first —
 	// even for a dry run, which says so rather than downloading in silence.
 	if dryRun {
-		a.Log.Printf("%s", i18n.T("mod.pack_dry_fetch", meta.Title, humanBytes(file.Size)))
+		a.Log.Printf("%s", i18n.T("mod.pack_dry_fetch", chosen.Name, humanBytes(file.Size)))
 	}
 	packPath, cleanup, err := a.fetchTemp(file)
 	if err != nil {
 		if !dryRun {
-			return a.fatal(err)
+			return nil, a.fatal(err), false
 		}
-		// A dry run still has to know what the pack contains: report the size and
-		// stop short rather than downloading on a "show me" command.
-		a.Log.Printf("%s", i18n.T("mod.pack_dry", meta.Title, chosen.VersionNumber, humanBytes(file.Size)))
+		a.Log.Printf("%s", i18n.T("mod.pack_dry", chosen.Name, chosen.VersionNumber, humanBytes(file.Size)))
 		a.Log.Printf("%s", i18n.T("mcv.dry_run"))
-		return 0
+		return nil, 0, false
 	}
-	defer cleanup()
-
 	idx, err := mrpack.Open(packPath)
 	if err != nil {
-		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", meta.Title, err)))
+		cleanup()
+		return nil, a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", chosen.Name, err))), false
 	}
+	job := &packInstall{project: project, version: chosen, packPath: packPath, cleanup: cleanup, idx: idx}
+
 	loader, loaderVersion := idx.Loader()
 	game := idx.GameVersion()
 	a.Log.Printf("%s", i18n.T("mod.pack_found", idx.Name, chosen.VersionNumber, game))
 
 	// --- does this instance match the pack? ------------------------------
-	spec, err := a.instanceSpecOf(inst, "", "")
-	if err != nil {
-		return a.fatal(err)
-	}
-	instGame, instLoader := spec.Game, spec.Loader
-	if game != "" && instGame != "" && game != instGame {
-		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_mismatch", idx.Name, game, inst.Name, instGame, game, game)))
+	if game != "" && spec.Game != "" && game != spec.Game {
+		if updating {
+			return nil, a.fatal(fmt.Errorf("%s", i18n.T("upd.pack_new_game", idx.Name, game, inst.Name, game, inst.Name))), false
+		}
+		return nil, a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_mismatch", idx.Name, game, inst.Name, spec.Game, game, game))), false
 	}
 	if loader != "" && loader != "fabric" {
-		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_loader_unsupported", idx.Name, loader)))
+		return nil, a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_loader_unsupported", idx.Name, loader))), false
 	}
-	if loader == "fabric" && instLoader != "" && loaderVersion != "" &&
-		loaderDiffers(spec.Version, loaderVersion) {
+	if loader == "fabric" && spec.Loader != "" && loaderVersion != "" && loaderDiffers(spec.Version, loaderVersion) {
 		// A pack is tested against one loader build. A different one usually runs
 		// it, so this is a warning, not a refusal — but staying quiet about it
 		// would leave a person blaming the pack when something odd happens.
@@ -474,17 +504,17 @@ func (a *App) addModpack(inst *store.Instance, project string, meta modrinth.Pro
 		}
 		a.Log.Printf("%s", i18n.T("mod.pack_loader_diff", idx.Name, loaderVersion, inst.Name, have))
 	}
-	if loader == "fabric" && instLoader == "" {
+	if loader == "fabric" && spec.Loader == "" {
 		a.Log.Printf("%s", i18n.T("mod.pack_needs_loader", idx.Name, loaderVersion))
 		if !dryRun {
 			id, err := a.ensureLoaderTarget(versionRef{id: inst.Version, game: game}, loaderFabric, loaderVersion)
 			if err != nil {
-				return a.fatal(err)
+				return nil, a.fatal(err), false
 			}
 			if id != "" {
 				inst.Version = id
 				if err := a.Store.Save(); err != nil {
-					return a.fatal(err)
+					return nil, a.fatal(err), false
 				}
 			}
 		}
@@ -493,39 +523,163 @@ func (a *App) addModpack(inst *store.Instance, project string, meta modrinth.Pro
 	// --- the pack's files ------------------------------------------------
 	items, err := mrpack.Items(idx, a.instanceDir(inst.Name))
 	if err != nil {
-		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", meta.Title, err)))
+		return nil, a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", idx.Name, err))), false
 	}
-	total := mrpack.TotalBytes(items)
-	a.Log.Printf("%s", i18n.T("mod.pack_files", len(items), humanBytes(total)))
+	job.items = items
+	job.total = mrpack.TotalBytes(items)
+	if updating {
+		job.removed = mrpack.Removed(inst.PackFiles, idx)
+	}
+	return job, 0, true
+}
+
+// applyPack installs a resolved pack: its files, the overrides that ship with it,
+// and the record of what it put there, so a later update can take it back.
+func (a *App) applyPack(inst *store.Instance, job *packInstall, dryRun, updating bool) int {
+	a.Log.Printf("%s", i18n.T("mod.pack_files", len(job.items), humanBytes(job.total)))
+	if len(job.removed) > 0 {
+		a.Log.Printf("%s", i18n.T("upd.pack_removed", len(job.removed)))
+		for _, p := range job.removed[:min(len(job.removed), 10)] {
+			a.Log.Infof("%s", p)
+		}
+		if len(job.removed) > 10 {
+			a.Log.Infof("%s", i18n.T("dl.and_more", len(job.removed)-10))
+		}
+	}
 	if dryRun {
-		for _, it := range items[:min(len(items), 10)] {
+		for _, it := range job.items[:min(len(job.items), 10)] {
 			a.Log.Infof("%s", it.Dest)
 		}
-		if len(items) > 10 {
-			a.Log.Infof("%s", i18n.T("dl.and_more", len(items)-10))
+		if len(job.items) > 10 {
+			a.Log.Infof("%s", i18n.T("dl.and_more", len(job.items)-10))
 		}
 		a.Log.Printf("%s", i18n.T("mcv.dry_run"))
 		return 0
 	}
 	if !a.Yeseverything {
-		ok, err := a.confirmBatch(idx.Name, len(items), total)
+		ok, err := a.confirmBatch(job.idx.Name, len(job.items), job.total)
 		if err != nil {
 			return a.fatal(err)
 		}
 		if !ok {
-			return a.fatal(fmt.Errorf("%s", i18n.T("dl.declined", idx.Name)))
+			return a.fatal(fmt.Errorf("%s", i18n.T("dl.declined", job.idx.Name)))
 		}
 	}
-	if err := dl.FetchAll(a.Policy(), items, 4, a.Log); err != nil {
+	instanceDir := a.instanceDir(inst.Name)
+	if err := a.dropPackFiles(instanceDir, job.removed, inst.PackFiles); err != nil {
 		return a.fatal(err)
 	}
-	written, kept, err := mrpack.ExtractOverrides(packPath, a.instanceDir(inst.Name))
-	if err != nil {
-		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", meta.Title, err)))
+	if err := dl.FetchAll(a.Policy(), job.items, 4, a.Log); err != nil {
+		return a.fatal(err)
 	}
-	a.Log.Printf("%s", i18n.T("mod.pack_done", idx.Name, len(items), humanBytes(total)))
+	written, kept, err := mrpack.ExtractOverrides(job.packPath, instanceDir)
+	if err != nil {
+		return a.fatal(fmt.Errorf("%s", i18n.T("mod.pack_broken", job.idx.Name, err)))
+	}
+	if updating {
+		a.Log.Printf("%s", i18n.T("upd.pack_moved", inst.Name, inst.PackNumber, job.version.VersionNumber))
+	}
+	a.Log.Printf("%s", i18n.T("mod.pack_done", job.idx.Name, len(job.items), humanBytes(job.total)))
 	a.Log.Printf("%s", i18n.T("mod.pack_overrides", len(written), len(kept)))
+
+	inst.Pack = job.project
+	inst.PackVersion = job.version.ID
+	inst.PackNumber = job.version.VersionNumber
+	inst.PackFiles = mrpack.Digests(job.idx)
 	return 0
+}
+
+// installPack is `mcli add <pack>`: resolve, then apply.
+func (a *App) installPack(inst *store.Instance, project string, meta modrinth.Project, selector string, dryRun, updating bool) int {
+	job, exit, ok := a.resolvePack(inst, project, selector, dryRun, updating)
+	if !ok {
+		return exit
+	}
+	defer job.cleanup()
+	job.meta = meta
+	code := a.applyPack(inst, job, dryRun, updating)
+	if code != 0 || dryRun {
+		return code
+	}
+	if err := a.Store.Save(); err != nil {
+		return a.fatal(err)
+	}
+	return 0
+}
+
+// dropPackFiles deletes the files an older pack installed that the new one does not
+// want. Two things keep it from touching anything else: only paths the old pack
+// recorded are considered at all, and a file is deleted only while it still matches
+// the digest that pack declared — a file that changed since is someone's own, and
+// it is kept and reported instead.
+func (a *App) dropPackFiles(instanceDir string, paths []string, recorded map[string]string) error {
+	for _, p := range paths {
+		dest, err := mrpack.Destination(instanceDir, p)
+		if err != nil {
+			// A path the pack should not have written is not ours to delete.
+			a.Log.Warnf("%s", i18n.T("upd.pack_kept", p))
+			continue
+		}
+		info, err := os.Stat(dest)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if info.IsDir() {
+			continue
+		}
+		want, known := recorded[p]
+		if !known {
+			a.Log.Printf("%s", i18n.T("upd.pack_kept_unrecorded", p))
+			continue
+		}
+		got, err := sha1File(dest)
+		if err != nil {
+			a.Log.Printf("%s", i18n.T("upd.pack_kept_unreadable", p, err))
+			continue
+		}
+		if want != "" && got != want {
+			a.Log.Printf("%s", i18n.T("upd.pack_kept_modified", p))
+			continue
+		}
+		if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// sha1File is the digest of a file on disk: the comparison that decides whether a
+// pack's file is still the pack's file.
+func sha1File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha1.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// pickPackVersion resolves what "the pack version to install" means: the newest
+// matching one by default, or a specific version when the caller names one by id,
+// name or version number.
+func pickPackVersion(versions []modrinth.Version, selector string) (modrinth.Version, bool) {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return versions[0], true
+	}
+	for _, v := range versions {
+		if v.ID == selector || v.VersionNumber == selector || v.Name == selector {
+			return v, true
+		}
+	}
+	return modrinth.Version{}, false
 }
 
 // fetchTemp downloads one file to a temporary path and returns it with its

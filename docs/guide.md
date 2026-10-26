@@ -151,3 +151,18 @@ memory, the arguments, the mods, the worlds. An instance with a loader stays wit
 that loader — the new version is built as a profile for it — and the previous
 version's files are left alone, because another instance may well be running them.
 An instance already on the newest release is simply checked for completeness.
+
+### Updating a pack
+
+```sh
+mcli add fabulously-optimized --instance modded --pack-version 15.0.0-beta.1   # a named pack version
+mcli update modded --pack --dry-run      # what the move would add and take back
+mcli update modded --pack                # move to the newest version that fits
+```
+
+A pack update is two lists: the files the new version wants, and the ones the old
+version added that it no longer does. The second list is why the pack's file list is
+recorded when it is installed — mcli compares against what the pack itself put
+there, never against a directory listing, so a file you dropped in by hand can
+never be removed. A file that changed *after* the pack installed it is kept too and
+reported: it is yours now.

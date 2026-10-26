@@ -173,6 +173,11 @@ func (a *App) instanceShow(args []string) int {
 	row("inst.field.memory", memoryLine(inst))
 	row("inst.field.jvm_args", argLine(inst.JvmArgs))
 	row("inst.field.game_args", argLine(inst.GameArgs))
+	if inst.Pack != "" {
+		// Which pack an instance was built from is part of what it is, so it
+		// belongs in `instance show` rather than only in the state file.
+		row("inst.field.pack", packLine(inst))
+	}
 	row("inst.field.files", a.instanceState(name))
 	row("inst.field.size", dirSize(dir))
 	row("inst.field.game_dir", dir)
@@ -560,4 +565,19 @@ func (a *App) instanceRename(args []string) int {
 	a.Log.Printf("%s", i18n.T("inst.rename_ok", oldName, newName))
 	a.Log.Printf("%s", i18n.T("inst.game_dir", newDir))
 	return 0
+}
+
+// packLine describes the modpack an instance was built from, with its version.
+func packLine(inst *store.Instance) string {
+	if inst.Pack == "" {
+		return "-"
+	}
+	version := inst.PackNumber
+	if version == "" {
+		version = inst.PackVersion
+	}
+	if version == "" {
+		return inst.Pack
+	}
+	return inst.Pack + " " + version
 }

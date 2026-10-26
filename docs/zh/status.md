@@ -79,6 +79,24 @@
   `Done (3.533s)`，端口监听在 `*:25566`，世界被创建。随后 `server list` 显示
   `运行中` 和 pid，`server stop` 对它发 SIGINT 并在 ~1s 内返回，退出时写下了
   `world/level.dat`，第二次 `stop` 报告 `没有在运行`（exit 1）。
+* 整合包更新：`mcli update <实例> --pack`（`add` 与 `update` 都有 `--pack-version`）。用真实整合包
+  验证：装上 beta.1，再更新到 beta.2 —— 收回 7 个文件、新增 6 个、变更 1 个。收回清单与我从两份
+  已发布索引独立算出的差异完全一致（同样是那 7 条路径）；更新前被我手动替换掉的那个文件连同内容
+  一起保留，而整合包自己的 6 个被删除。之所以能这么准，靠的是记录：每个整合包文件都连同它声明的
+  摘要一起存下来，只有摘要仍然一致的才会被删。第一版用的是修改时间比较，结果多保留了 3 个本该删掉
+  的文件 —— 这也是最后改成按摘要判断的原因。
+* `add <整合包>` 的 `--pack-version` 可以指定某个整合包版本；优先选择适配实例游戏版本的那个版本，
+  而不是单纯最新的；实例已经在最新的适配版本上时会直接说明。
+* TOML 写入器的两个 bug，都是靠「写下去的状态必须能读回来」发现的：
+  * 嵌套在结构体里的普通值 map 会被**整个丢掉** —— 不报错、没有键，数据就是不见了。这正好是记录
+    整合包文件用的形状，现在它会写成独立的表（`[instances."x".pack_files]`），并有
+    `internal/toml/nested_map_test.go` 钉住往返。
+  * `omitempty` 之前被忽略，所有可选字段都会写成 `""`、`[]` 或零值：每个实例里都有 `java = ""`、
+    `xmx = ""`…… 现在空的可选值不再写出，也就是这个标签一直声称的行为。
+* 一个需要知道的后果：state.toml 只有一种形态、没有迁移（既定决策），所以更早的构建写出的文件
+  （pack_files 是数组而不是表）会让 mcli 直接停下并报
+  `instances.<名称>.pack_files: unsupported field kind map`，而不是去猜。报错会点名字段。
+* `instance show` 多了一行：实例是由哪个整合包建起来的。
 * `mcli update` 把实例换到另一个游戏版本，三种情况都实测过：
   `update modtest --version 1.21.4` 取回 189 个文件 / 97.7 MiB（这台机器上原本根本没有这个
   版本 —— 客户端 jar、库、natives、资源）并把实例指过去；`update legacy --version 26.3` 把
@@ -275,9 +293,8 @@ export MCLI_MINECRAFT=/root/.hermes/cache/scratch/mtest2/mc
 
 1. **CurseForge**：Modrinth 不需要 key，已经接上；CurseForge 每个用户都要 API key，因此
    需要一个配置项和一条「缺 key」的报错路径。尚未开始。
-2. **CurseForge 整合包与整合包更新**：`.mrpack` 已经能装；以 CurseForge zip 形式发布的
-   整合包、以及把实例升到更新的整合包版本都没做。（换*游戏版本*现在是 `mcli update`；
-   那边还缺的是更新实例里的整合包。）
+2. **CurseForge 整合包**：`.mrpack` 已经能装也能更新；以 CurseForge zip 形式发布的整合包还没做。
+   游戏版本与实例内整合包的更新都已完成（`mcli update`、`mcli update --pack`）。
 
 
 ## 约定（AGENTS.md 故意没写的细节）

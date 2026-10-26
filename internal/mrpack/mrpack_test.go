@@ -198,3 +198,40 @@ func TestFileClientWanted(t *testing.T) {
 }
 
 var _ = dl.Item{}
+
+func TestRemovedIsOnlyWhatTheOldPackPutThere(t *testing.T) {
+	next, err := Open(writePack(t, sampleIndex))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The caller passes what the *old pack recorded*, never a directory listing —
+	// which is exactly why a file someone dropped in by hand can never be removed.
+	installed := map[string]string{
+		"mods/client-mod.jar":  "aa11", // still wanted
+		"mods/dropped-mod.jar": "cc33", // the new pack does not list it
+		"config/plain.toml":    "dd44", // still wanted
+	}
+	got := Removed(installed, next)
+	if len(got) != 1 || got[0] != "mods/dropped-mod.jar" {
+		t.Fatalf("Removed() = %v, want only the dropped mod", got)
+	}
+	// a file a person added by hand is not in the pack's list, so it can never
+	// come back out: that is the whole safety property here
+	for _, p := range got {
+		if strings.HasPrefix(p, "world/") || strings.HasPrefix(p, "assets/") {
+			t.Errorf("Removed() wants to delete someone else's file: %v", got)
+		}
+	}
+	if paths := Paths(next); len(paths) != 2 {
+		t.Errorf("Paths() = %v, want the two client-side files", paths)
+	}
+	if digests := Digests(next); len(digests) != 2 || digests["mods/client-mod.jar"] != "aa11" {
+		t.Errorf("Digests() = %v, want the client-side digests", digests)
+	}
+	// nothing in the pack's own list may be silently kept out of it
+	for _, p := range Paths(next) {
+		if strings.HasPrefix(p, "mods/server-mod.jar") {
+			t.Errorf("a server-only file reached the client list: %v", p)
+		}
+	}
+}

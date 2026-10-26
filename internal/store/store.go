@@ -85,6 +85,17 @@ type Instance struct {
 	Xms        string    `toml:"xms,omitempty" json:"xms,omitempty"`   //
 	JvmArgs    []string  `toml:"jvm_args,omitempty" json:"jvm_args,omitempty"`
 	GameArgs   []string  `toml:"game_args,omitempty" json:"game_args,omitempty"`
+	// The modpack this instance was built from, when one was installed. Keeping
+	// the project and version means `mcli update --pack` can find a newer one, and
+	// keeping the file list means it can take back what the old pack added instead
+	// of leaving orphans behind.
+	Pack        string `toml:"pack,omitempty" json:"pack,omitempty"`
+	PackVersion string `toml:"pack_version,omitempty" json:"pack_version,omitempty"`
+	PackNumber  string `toml:"pack_number,omitempty" json:"pack_number,omitempty"`
+	// Pack files are remembered with the digest the pack declared for each one, so
+	// an update can tell "the pack's own file" from "a file someone has changed
+	// since" and never delete the second kind.
+	PackFiles map[string]string `toml:"pack_files,omitempty" json:"pack_files,omitempty"`
 }
 
 // LastLaunch remembers the previous `launch` so `--last` can replay it. It is

@@ -418,3 +418,48 @@ func TestUnknownKeysAreReportedNotSwallowed(t *testing.T) {
 		t.Errorf("unknown keys = %v", st.UnknownKeys)
 	}
 }
+
+func TestPackRecordSurvivesAReopen(t *testing.T) {
+	st := openTemp(t)
+	st.Data.Instances["modded"] = &Instance{
+		Name: "modded", Version: "fabric-loader-0.20.1-26.3",
+		Pack: "fabulously-optimized", PackVersion: "Wo44jriL", PackNumber: "15.0.0-beta.2",
+		PackFiles: map[string]string{"mods/sodium.jar": "aa11", "resourcepacks/faithful.zip": "bb22"},
+	}
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+	again := reopen(t, st)
+	inst, ok := again.GetInstance("modded")
+	if !ok {
+		t.Fatal("instance disappeared")
+	}
+	if inst.Pack != "fabulously-optimized" || inst.PackNumber != "15.0.0-beta.2" {
+		t.Errorf("pack record = %q %q", inst.Pack, inst.PackNumber)
+	}
+	if len(inst.PackFiles) != 2 || inst.PackFiles["resourcepacks/faithful.zip"] != "bb22" {
+		t.Errorf("pack files = %v", inst.PackFiles)
+	}
+	// an instance with no pack must not grow empty keys in state.toml
+	st.Data.Instances["plain"] = &Instance{Name: "plain", Version: "26.3"}
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(st.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the instance with no pack must not grow empty pack keys: read its own block
+	text := string(body)
+	start := strings.Index(text, "[instances.plain]")
+	if start < 0 {
+		t.Fatalf("the plain instance is not in state.toml:\n%s", text)
+	}
+	block := text[start:]
+	if next := strings.Index(block[1:], "\n["); next >= 0 {
+		block = block[:next+1]
+	}
+	if strings.Contains(block, "pack") {
+		t.Errorf("an instance with no pack wrote pack keys:\n%s", block)
+	}
+}

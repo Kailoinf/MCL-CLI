@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Kailoinf/MCL-CLI/internal/i18n"
+	"github.com/Kailoinf/MCL-CLI/internal/store"
 )
 
 // update_cmd.go moves an instance to another game version — in practice, to a
@@ -16,6 +17,8 @@ import (
 
 func (a *App) cmdUpdate(args []string) int {
 	f, err := parseFlags("update", args, map[string]flagSpec{
+		"pack":           {},
+		"pack-version":   {takesValue: true},
 		"version":        {takesValue: true},
 		"loader":         {takesValue: true},
 		"loader-version": {takesValue: true},
@@ -47,6 +50,13 @@ func (a *App) cmdUpdate(args []string) int {
 	}
 
 	dryRun := f.boolean("dry-run")
+
+	// --pack is a different question from --version: it moves the modpack the
+	// instance was built from, not the game.
+	if f.has("pack") || f.has("pack-version") {
+		return a.updatePack(inst, f.str("pack-version", ""), dryRun)
+	}
+
 	spec, err := a.instanceSpecOf(inst, "", "")
 	if err != nil {
 		// The version the instance points at may not be installed at all (a fresh
@@ -139,6 +149,37 @@ func (a *App) cmdUpdate(args []string) int {
 			return a.fatal(err)
 		}
 		a.Log.Printf("%s", i18n.T("upd.moved", inst.Name, from, id))
+	}
+	return 0
+}
+
+// updatePack moves an instance to a newer version of the pack it was built from:
+// the files the new pack wants, and the ones the old pack added that it no longer
+// does. Anything a person put in by hand is not in the old pack's list, so it is
+// never touched.
+func (a *App) updatePack(inst *store.Instance, selector string, dryRun bool) int {
+	if inst.Pack == "" {
+		return a.fatal(fmt.Errorf("%s", i18n.T("upd.no_pack", inst.Name)))
+	}
+	have := inst.PackNumber
+	if have == "" {
+		have = inst.PackVersion
+	}
+	a.Log.Printf("%s", i18n.T("upd.pack_current", inst.Name, inst.Pack, have))
+	job, exit, ok := a.resolvePack(inst, inst.Pack, selector, dryRun, true)
+	if !ok {
+		return exit
+	}
+	defer job.cleanup()
+	if job.version.ID == inst.PackVersion && selector == "" {
+		a.Log.Printf("%s", i18n.T("upd.pack_same", inst.Name, have))
+	}
+	code := a.applyPack(inst, job, dryRun, true)
+	if code != 0 || dryRun {
+		return code
+	}
+	if err := a.Store.Save(); err != nil {
+		return a.fatal(err)
 	}
 	return 0
 }

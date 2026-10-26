@@ -89,7 +89,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli fabric list <game> [--limit N]` | the Fabric loader builds published for a game version |
 | `mcli fabric list <game> [--limit N]` | the loader builds Fabric publishes for a game version (installing is the `--loader` choice below) |
 | `mcli search <query> [--type mod\|resourcepack\|shader\|datapack\|modpack] [--version <game>] [--loader <loader>] [--limit N] [--offset N]` | search Modrinth (one query, one page) |
-| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--dry-run]` | install a project's matching file into an instance; a modpack is read and installed as a pack |
+| `mcli add <project> [--instance <name>] [--version <game>] [--loader <loader>] [--pack-version <v>] [--dry-run]` | install a project's matching file into an instance; a modpack is read and installed as a pack |
 | `mcli mods [<instance>]` | what an instance already has in mods/, resourcepacks/, shaderpacks/ |
 | `mcli server create <name> --version <v> [--java <path>] [--xmx 2G] [--xms 512M] [--port 25565] [--dir <path>] [--jvm-arg ...] [--eula]` | register a server: its own directory, world and port; the Minecraft EULA is printed and has to be accepted |
 | `mcli server [list \| show <name> \| set <name> [--xmx] [--xms] [--port] [--java] [--version] \| delete <name> [--keep-files] [--yes]]` | inspect and change servers |
@@ -97,7 +97,7 @@ mcli java which 1.21.4                        # which Java this version needs / 
 | `mcli server attach <name> [--lines N]` | follow a detached server's console and type into it (Ctrl+C leaves the server running) |
 | `mcli server cmd <name> <command…>` | send one command into a running server's console |
 | `mcli server stop <name> [--force]` | ask a detached server to stop: it gets SIGINT, exactly what Ctrl+C would send, so the world is saved |
-| `mcli update [<name>] [--version <v>] [--loader vanilla\|fabric] [--dry-run]` | move an instance to another game version, keeping its loader, its settings and its files |
+| `mcli update [<name>] [--version <v>] [--loader vanilla\|fabric] [--pack] [--pack-version <v>] [--dry-run]` | move an instance to another game version (`--pack`: to a newer version of its modpack), keeping its loader, settings and files |
 | `mcli doctor [<name>] [--all] [--deep]` | health check: the machine (home, java, manifest, log) and every file an instance needs; exit 1 when something is wrong |
 | `mcli repair <name> [--deep] [--force] [--dry-run]` | fetch exactly the files doctor found missing or damaged (`--force` re-downloads everything planned) |
 | `mcli delete <name> [--keep-files] [--yes]` | delete an instance (and its saves) |

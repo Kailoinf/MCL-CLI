@@ -252,6 +252,16 @@ Content from Modrinth, verified against the live API:
 ./mcli add sodium --instance <vanilla instance>           # must refuse and name --loader fabric
 ```
 
+Updating the pack inside an instance (verified beta.1 → beta.2 of a real pack: 7
+files taken back, 6 added, and a file replaced by hand surviving):
+
+```sh
+./mcli add <pack> --instance <matching instance> --pack-version <pack version> --yes
+./mcli update <instance> --pack --dry-run     # the two lists, before touching anything
+./mcli update <instance> --pack --yes
+./mcli update <instance> --pack               # on the newest fitting version: says so and stops
+```
+
 Moving an instance (verified: 189 files / 97.7 MiB into a version that was not on
 the box, and `1.8.9 → 26.3`):
 
@@ -282,6 +292,10 @@ Two things to keep in mind, learned the hard way there:
   never the instance's name or its id: another launcher writes its own id, puts the
   game version in `clientVersion` instead of `inheritsFrom`, and names the loader
   only through its libraries. Reading the id made a matching pack look wrong.
+* **Decide "is this still the pack's file" by digest, not by timestamp.** Pack files
+  are recorded with the SHA-1 the pack declared; a modification-time comparison kept
+  three files it should have deleted, because a download can finish after the moment
+  the record was stamped.
 * **Skip zip folder entries before resolving a path.** `overrides/` is stored as an
   entry with nothing after the prefix; resolving that empty path failed the whole
   extract step *after* the 42 MB download. A fixture that omits folder entries
@@ -337,7 +351,6 @@ installation are done (`mcli server create/list/show/set/delete/start/stop/attac
 done as well: `mcli search`/`add`/`mods` against Modrinth (no API key needed), and
 `add <pack>` installs a `.mrpack` — its file list, its overrides and the loader it
 was built for — after checking the pack's game version against the instance. What
-is left: CurseForge (per-user API key), CurseForge-format packs, and updating *a
-pack* inside an instance. Game versions move with `mcli update <instance>` (newest
+is left: CurseForge (per-user API key) and CurseForge-format packs. Game versions move with `mcli update <instance>` (newest
 release by default, loader kept, plan-only with `--dry-run`); the version an
 instance leaves behind keeps its files.
