@@ -40,6 +40,10 @@ type App struct {
 	Health *dl.SourceHealth
 
 	started time.Time
+
+	// answered remembers the prompts this run already said yes to, so a file offered
+	// by the caller and again by the download policy is asked about once.
+	answered map[string]bool
 }
 
 // newApp loads paths, mcli.toml, the language and the logger. Global flags are
@@ -110,6 +114,9 @@ func newApp(glob *flags) (*App, error) {
 		log.Warnf("%s", i18n.T("state.unknown_key", key))
 	}
 	if st.CredentialKeysUnreadable {
+		for _, file := range st.CredentialFilesUnreadable {
+			log.Warnf("%s", i18n.T("state.credential_keys_file", file))
+		}
 		log.Warnf("%s", i18n.T("state.credential_keys_hint"))
 	}
 
@@ -120,6 +127,7 @@ func newApp(glob *flags) (*App, error) {
 		Yeseverything: glob.boolean("yes"),
 		Health:        dl.NewSourceHealth(3),
 		started:       time.Now(),
+		answered:      map[string]bool{},
 	}
 	return app, nil
 }
@@ -237,12 +245,22 @@ func (a *App) AuthClient(timeout time.Duration) *auth.Client {
 // ---------------------------------------------------------------------------
 // prompting
 
-// confirmFile asks about a single large file.
+// confirmFile asks about a single large file. The answer is remembered for the rest of
+// the run: a caller that asks before starting and a download policy that asks again
+// per file used to put the same question on the screen twice.
 func (a *App) confirmFile(desc string, size int64) (bool, error) {
 	if a.Yeseverything || !a.Store.Cfg().ConfirmLargeDownload {
 		return true, nil
 	}
-	return a.prompt(i18n.T("dl.confirm_large", desc, humanBytes(size)))
+	key := fmt.Sprintf("file\x00%s\x00%d", desc, size)
+	if a.answered[key] {
+		return true, nil
+	}
+	ok, err := a.prompt(i18n.T("dl.confirm_large", desc, humanBytes(size)))
+	if ok && err == nil {
+		a.answered[key] = true
+	}
+	return ok, err
 }
 
 // confirmBatch asks once about a batch of downloads.
@@ -253,7 +271,15 @@ func (a *App) confirmBatch(desc string, files int, total int64) (bool, error) {
 	if total < int64(a.Store.Cfg().LargeDownloadMB)*1024*1024 {
 		return true, nil
 	}
-	return a.prompt(i18n.T("dl.confirm_batch", desc, files, humanBytes(total)))
+	key := fmt.Sprintf("batch\x00%s\x00%d\x00%d", desc, files, total)
+	if a.answered[key] {
+		return true, nil
+	}
+	ok, err := a.prompt(i18n.T("dl.confirm_batch", desc, files, humanBytes(total)))
+	if ok && err == nil {
+		a.answered[key] = true
+	}
+	return ok, err
 }
 
 // prompt prints a question and reads y/n from stdin.
@@ -354,21 +380,10 @@ func (a *App) session(acc *store.Account) (*store.Account, *auth.Session, error)
 // session.toml. Each credential gets its own file so a short-lived token never
 // sits in the same document as the long-lived one.
 func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string) error {
-	if err := a.Store.SetAccountSalt(acc); err != nil {
-		return err
-	}
-	key, err := a.Store.AccountKey(acc)
-	if err != nil {
-		return err
-	}
-	refreshEnc, err := secret.Encrypt(key, []byte(sess.MS.RefreshToken))
-	if err != nil {
-		return err
-	}
-	mcEnc, err := secret.Encrypt(key, []byte(sess.MC.AccessToken))
-	if err != nil {
-		return err
-	}
+	// Identity first, credentials second. The salt belongs to one account, and a
+	// brand-new account only gets its UUID here: deriving the salt before that writes
+	// it under an empty key, which is nobody — the stored account then has no salt,
+	// and the next run says "log in again" right after a login that succeeded.
 	oldUUID := acc.UUID
 	if label != "" {
 		acc.Label = label
@@ -385,6 +400,21 @@ func (a *App) storeSession(acc *store.Account, sess *auth.Session, label string)
 	}
 	if oldUUID != "" && oldUUID != acc.UUID {
 		a.Store.DropAccount(oldUUID)
+	}
+	if err := a.Store.SetAccountSalt(acc); err != nil {
+		return err
+	}
+	key, err := a.Store.AccountKey(acc)
+	if err != nil {
+		return err
+	}
+	refreshEnc, err := secret.Encrypt(key, []byte(sess.MS.RefreshToken))
+	if err != nil {
+		return err
+	}
+	mcEnc, err := secret.Encrypt(key, []byte(sess.MC.AccessToken))
+	if err != nil {
+		return err
 	}
 	tok, session := a.Store.Tokens(acc.UUID)
 	tok.RefreshEnc = refreshEnc

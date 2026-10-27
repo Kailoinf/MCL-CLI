@@ -53,6 +53,7 @@ var en = map[string]string{
 	"err.state.commit":           "cannot commit %s: %v",
 	"err.state.no_save":          "cannot save mcli state: %v",
 	"err.state.marshal":          "cannot serialise TOML: %v",
+	"state.credential_keys_file": "the file it read: %s",
 	"state.credential_keys_hint": "refresh.toml/session.toml are not in this build's layout, so no stored login can be used; mcli never rewrites an older file by guessing — log in again (`mcli login`) or delete those files",
 	"state.unknown_key":          "ignored unknown key %s",
 	"state.too_new":              "%s was written by a newer mcli (state version %d, this build understands %d); upgrade mcli to avoid surprises",

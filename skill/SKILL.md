@@ -155,6 +155,12 @@ small steps as each piece passes.
 - A version id that is not in the vanilla manifest is normal (PCL/HMCL profiles are
   exactly that): say the version file on disk is being used, do not warn about an
   unknown version.
+- A login must store the salt against the account it is about to store: set the
+  identity (UUID, name) before deriving credentials, or the salt lands on a nameless
+  record and the next command says "log in again" after a successful login.
+- Ask once: a prompt that a caller and the download policy can both raise has to
+  remember the answer for the run, or the question reaches the screen twice and the
+  second copy eats stdin.
 - Resolve the account before fetching anything, so a credential that cannot be read
   fails in the first second rather than after an install.
 - `mcli list` lists registered instances, not the contents of the game directory;

@@ -206,6 +206,11 @@ type Store struct {
 	// the file is written again by this build.
 	CredentialKeysUnreadable bool
 
+	// CredentialFilesUnreadable names those files with the time they were last
+	// written, which is what tells a file from an older run apart from one written a
+	// minute ago. Paths and timestamps only: never the contents.
+	CredentialFilesUnreadable []string
+
 	// UnknownKeys lists keys found on disk that mcli does not know, so the CLI
 	// can warn about typos instead of ignoring them silently.
 	UnknownKeys []string
@@ -322,6 +327,8 @@ func (s *Store) loadTokens() error {
 			}
 			if len(unknown) > 0 {
 				s.CredentialKeysUnreadable = true
+				s.CredentialFilesUnreadable = append(s.CredentialFilesUnreadable,
+					describeUnreadable(s.RefreshPath))
 			}
 			s.UnknownKeys = append(s.UnknownKeys, labelLeft(s.RefreshPath, unknown)...)
 			if file.Tokens != nil {
@@ -340,6 +347,8 @@ func (s *Store) loadTokens() error {
 			}
 			if len(unknown) > 0 {
 				s.CredentialKeysUnreadable = true
+				s.CredentialFilesUnreadable = append(s.CredentialFilesUnreadable,
+					describeUnreadable(s.SessionPath))
 			}
 			s.UnknownKeys = append(s.UnknownKeys, labelLeft(s.SessionPath, unknown)...)
 			if file.Sessions != nil {
@@ -350,6 +359,14 @@ func (s *Store) loadTokens() error {
 		}
 	}
 	return nil
+}
+
+// describeUnreadable names a credential file and when it was written.
+func describeUnreadable(path string) string {
+	if st, err := os.Stat(path); err == nil {
+		return path + " (" + st.ModTime().Format("2006-01-02 15:04") + ")"
+	}
+	return path
 }
 
 func labelLeft(path string, keys []string) []string {
@@ -487,7 +504,10 @@ func (s *Store) SaveRefresh() error {
 	// empty entry would only be noise a reader has to explain.
 	tokens := map[string]*TokenRecord{}
 	for uuid, rec := range s.Data.Refresh {
-		if rec == nil || (rec.RefreshEnc == "" && rec.Salt == "") {
+		// A record with no key cannot be attributed to an account, and the TOML writer
+		// would turn it into a flat `[tokens]` section — the shape the reader rejects.
+		// Writing one would mean mcli warning about its own file.
+		if uuid == "" || rec == nil || (rec.RefreshEnc == "" && rec.Salt == "") {
 			continue
 		}
 		tokens[uuid] = rec

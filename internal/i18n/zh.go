@@ -53,6 +53,7 @@ var zh = map[string]string{
 	"err.state.commit":           "提交 %s 失败：%v",
 	"err.state.no_save":          "保存 mcli 状态失败：%v",
 	"err.state.marshal":          "TOML 序列化失败：%v",
+	"state.credential_keys_file": "读到的文件：%s",
 	"state.credential_keys_hint": "refresh.toml/session.toml 不是本版本的布局，因此已存的登录用不了；mcli 不会猜着改写旧文件 —— 重新执行 `mcli login`，或直接删掉这两个文件",
 	"state.unknown_key":          "忽略了未知配置键 %s",
 	"state.too_new":              "%s 由更新版本的 mcli 写入（状态版本 %d，本版本只认得 %d）；建议升级 mcli",

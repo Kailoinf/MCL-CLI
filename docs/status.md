@@ -105,6 +105,20 @@ and what is left. Update it in the same commit as the work.
   failed. Verified: a directory with 3 versions → the count and both commands; a
   directory without `versions/` → said so; a path that does not exist → said mcli will
   create it; an unrelated key → no scan.
+* One `y` used to be not enough for a large download: `server start` offered the jar and
+  the download policy offered the same file again, so the question appeared twice and
+  the second copy read whatever was left on stdin. The answer is remembered per file
+  and per batch for the rest of the run now, and a *different* file still asks.
+  `TestTheSameLargeFileIsAskedAboutOnce` pins it: one line of input, one question for
+  that file, and a second question for a file that has not been agreed to.
+* A login that succeeds can still leave the account unusable: `storeSession` derived
+  the per-account salt **before** giving a brand-new account its UUID, so the salt was
+  written under a nameless key, the account itself kept none, and the next command
+  said "this account has no token_salt; log in again" right after a login that reported
+  success. Found from a user's transcript and reproduced by
+  `TestLoginPutsTheSaltOnTheStoredAccount`, which fails on the old order and passes on
+  the identity-first one. The writer also refuses to marshal a nameless record now, so
+  mcli cannot write a credential document it would then complain about.
 * refresh.toml written by this build is pinned by a test to the per-account shape
   (`[tokens.<uuid>]`), including that a record keyed by nothing is not turned into the
   flat `[tokens]` section the reader rejects — mcli must never warn about a file it
@@ -127,9 +141,12 @@ and what is left. Update it in the same commit as the work.
   are — keys this build skipped — and that is now followed by what follows from it:
   the stored login cannot be used, and mcli will not rewrite an older file by guessing.
   Reproduced from the shape a user reported (a flat `[tokens]` with `token_salt` and
-  `refresh_token_enc`); the keyed `[tokens.<uuid>]` shape, which is the only one this
-  line of builds ever wrote, stays quiet. Logging in again rewrites the file and the
-  warning goes away.
+  `refresh_token_enc`); the keyed `[tokens.<uuid>]` shape stays quiet. An earlier note
+  here claimed the flat shape could not have come from this code at all — that was
+  wrong. A fresh login did leave credentials under a nameless key (see the entry
+  above), which is exactly the kind of file this warning is for. It also names the file
+  and when it was last written now, because "which file, and how old" is the first
+  thing worth knowing. Logging in again rewrites the file and the warning goes away.
 * CurseForge is wired for `search` and `add` (`--source curseforge`). Verified here: no
   key means the exact instruction and no request; a wrong key makes a live call to
   api.curseforge.com and comes back `HTTP 403`, which the CLI reports as "the key was
