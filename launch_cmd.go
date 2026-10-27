@@ -136,12 +136,44 @@ func (a *App) cmdLaunch(args []string) int {
 
 	a.Log.Printf("%s", i18n.T("launch.preparing", instName, versionID))
 
+	// --- account ---------------------------------------------------------
+	// Resolved before anything is fetched: a stored login that cannot be read is
+	// worth saying now, not after several hundred megabytes have been downloaded.
+	acc := a.findAccount(f.str("account", ""))
+	if acc == nil {
+		acc, _ = a.activeAccount()
+	}
+	var accSession *auth.Session
+	switch {
+	case acc != nil:
+		_, sess, err := a.session(acc)
+		if err != nil {
+			if !dryRun {
+				return a.fatal(err)
+			}
+			a.Log.Warnf("%s", err)
+			acc = nil
+			break
+		}
+		accSession = sess
+	case dryRun:
+		a.Log.Warnf("%s", i18n.T("auth.no_account"))
+	default:
+		return a.fatal(fmt.Errorf("%s", i18n.T("auth.no_account")))
+	}
+
 	// --- version document ------------------------------------------------
 	entry := mcv.ManifestVersion{}
+	local := a.hasLocalVersion(versionID)
 	if man, err := a.ManifestStore().Get(false); err != nil {
 		a.Log.Warnf("%s", err)
 	} else if found, ok := man.Find(versionID); ok {
 		entry = found
+	} else if local {
+		// A profile another launcher made (PCL, HMCL, a Fabric install) is not a
+		// vanilla version id, and that is normal rather than wrong: the file on disk
+		// is what runs.
+		a.Log.Printf("%s", i18n.T("mcv.local_profile", versionID))
 	} else {
 		a.Log.Warnf("%s", i18n.T("mcv.unknown_version", versionID))
 	}
@@ -199,21 +231,8 @@ func (a *App) cmdLaunch(args []string) int {
 		UserType:    "msa",
 		Properties:  "{}",
 	}
-	acc := a.findAccount(f.str("account", ""))
-	if acc == nil {
-		acc, _ = a.activeAccount()
-	}
-	switch {
-	case acc != nil:
-		if _, sess, err := a.session(acc); err != nil {
-			return a.fatal(err)
-		} else {
-			authBlock = authFor(acc, sess, a.ClientID())
-		}
-	case dryRun:
-		a.Log.Warnf("%s", i18n.T("auth.no_account"))
-	default:
-		return a.fatal(fmt.Errorf("%s", i18n.T("auth.no_account")))
+	if acc != nil {
+		authBlock = authFor(acc, accSession, a.ClientID())
 	}
 
 	// --- command line ----------------------------------------------------

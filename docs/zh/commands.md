@@ -17,7 +17,7 @@
 | `mcli list [--instances] [--accounts] [--available] [--type <t>] [--search <text>] [--limit N]` | 实例、账号或可下载的版本 |
 | `mcli create <名称> --version <版本> [--loader vanilla\|fabric] [--loader-version <版本>] [--java <路径>] [--xmx 4G] [--xms 1G] [--jvm-arg …] [--game-arg …] [--force]` | 创建实例，可选模组加载器 |
 | `mcli launch <name>\|<version>\|--last [--version <v>] [--java <path>] [--xmx] [--xms] [--jvm-arg] [--game-arg] [--width N] [--height N] [--server host[:port]] [--fullscreen] [--demo] [--dry-run] [--wait] [--account <a>]` | 按需安装并启动 |
-| `mcli instance [list \| show <name> \| set <name> … \| copy <src> <dst> [--with-files] \| rename <old> <new> \| scan [--all] \| import <version> [--as <name>]]` | 查看和修改实例，接管已有的安装 |
+| `mcli instance [list \| show <name> \| set <name> … \| copy <src> <dst> [--with-files] \| rename <old> <new> \| scan [--all] \| import <version> [--as <name>]]` | 查看和修改实例，接管已有的安装 —— `list` 与切换 `minecraft_dir` 会自动接管磁盘上的版本，文件不动 |
 | `mcli delete <name> [--keep-files] [--yes]` | 删除一个实例 |
 | `mcli update [<实例>] [--version <版本>] [--loader vanilla\|fabric] [--loader-version <版本>] [--pack] [--pack-version <版本>] [--dry-run] [--force]` | 把实例换到另一个游戏版本（默认最新正式版），加 `--pack` 则换它整合包的版本；保留加载器、设置与全部文件 |
 | `mcli doctor [<name>] [--all] [--deep]` | 体检本机、每个实例，以及服务端（jar 与版本校验和、EULA、端口、最近日志）；发现问题时以 1 退出 |

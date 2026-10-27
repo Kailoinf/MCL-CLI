@@ -52,6 +52,13 @@ func (a *App) cmdInstance(args []string) int {
 }
 
 func (a *App) instanceList() int {
+	// Anything on disk that is a version and not an instance yet becomes one here:
+	// mcli is pointed at another launcher's .minecraft often enough that asking for
+	// one `instance import` per version is busywork. Registration only — no file is
+	// moved, and each adoption is named in the output.
+	if adopted := a.adoptUnregistered(); len(adopted) > 0 {
+		a.Log.Printf("%s", i18n.T("inst.auto_adopted", len(adopted), strings.Join(adopted, ", ")))
+	}
 	names := a.Store.InstanceNames()
 	if len(names) == 0 {
 		a.Log.Printf("%s", i18n.T("inst.no_instances"))

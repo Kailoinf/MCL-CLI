@@ -72,9 +72,11 @@ mcli instance scan                    # what is there, and which are registered
 mcli instance import 1.21.4           # adopt in place (--as <name> to rename)
 ```
 
-Switching the directory (`mcli config set minecraft_dir <path>`) scans it right away
-and says how many versions are waiting to be adopted, so a switch never leaves you
-guessing what happened.
+Switching the directory (`mcli config set minecraft_dir <path>`) scans it and takes
+over what it finds: every version directory with a version document becomes an
+instance of the same name, files untouched, and each adoption is named in the output.
+`mcli list` does the same before listing, so a full `.minecraft` never shows up as an
+empty launcher.
 
 ## Servers
 

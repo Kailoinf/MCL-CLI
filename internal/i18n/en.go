@@ -106,6 +106,8 @@ var en = map[string]string{
 	"mcv.manifest_refreshed":   "version manifest updated from %s (%d versions)",
 	"mcv.manifest_expired":     "version manifest cache expired, refreshing",
 	"mcv.manifest_failed":      "cannot load the version manifest: %v",
+	"mcv.local_profile":        "this version is not in the vanilla list; using the version file on disk (%s)",
+	"inst.auto_adopted":        "took over %d installation(s) found on disk: %s (files stay where they are)",
 	"mcv.unknown_version":      "unknown version %q; `mcli list --available` shows what exists",
 	"mcv.version_json_missing": "version json for %s is missing and cannot be downloaded: %v",
 	"mcv.loaded":               "%s json loaded from %s",

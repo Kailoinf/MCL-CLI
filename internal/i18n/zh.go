@@ -106,6 +106,8 @@ var zh = map[string]string{
 	"mcv.manifest_refreshed":   "版本清单已从 %s 更新（%d 个版本）",
 	"mcv.manifest_expired":     "版本清单缓存过期，正在刷新",
 	"mcv.manifest_failed":      "无法加载版本清单：%v",
+	"mcv.local_profile":        "该版本不在原版清单里；按磁盘上的版本文档启动（%s）",
+	"inst.auto_adopted":        "已接管磁盘上的 %d 个安装：%s（文件保持原处）",
 	"mcv.unknown_version":      "未知版本 %q；可用 mcli list --available 查看",
 	"mcv.version_json_missing": "%s 的版本 JSON 缺失且无法下载：%v",
 	"mcv.loaded":               "%s 的 JSON 来自 %s",

@@ -85,6 +85,20 @@ and what is left. Update it in the same commit as the work.
   outright (`mcserver.AcceptEula`), in `server set --eula` and in `server create
   --eula` (where an existing refusal would have survived the same way). The claim was
   checked against the file, not against the message; the tests pin it.
+* Adopting is automatic now, because it was asked for: `list` and a `minecraft_dir`
+  switch take over every version directory with a version document, name each one, and
+  keep the files where they are. Verified with a directory holding a vanilla install, a
+  PCL-style Fabric profile and a folder with no JSON: the first two became instances
+  named after their directories, the third was skipped, and a second `list` adopted
+  nothing twice.
+* Two things a real `launch` on someone else's machine exposed:
+  * A version id that is not in the vanilla manifest is not an error — a PCL/HMCL
+    profile is exactly that. The line is now "this version is not in the vanilla list;
+    using the version file on disk" instead of a warning that the next lines contradict.
+  * A stored account whose credential cannot be read (its `token_salt` is gone) used to
+    be reported *after* the whole install work. The account is resolved before anything
+    is fetched now: `launch` fails immediately with the log-in-again message, and
+    `--dry-run` warns and continues, as before.
 * `config set minecraft_dir <path>` scans the directory it was just pointed at and
   says how many versions are waiting to be adopted — the same report `list` gives —
   because a switch that registers nothing is indistinguishable from a switch that

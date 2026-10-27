@@ -148,9 +148,15 @@ small steps as each piece passes.
   unknown-key warning from `refresh.toml`/`session.toml` means that login cannot be
   read. Never migrate it — print what was skipped, say the login is unusable, and name
   `mcli login` (or deleting the file) as the way out.
-- Pointing the game directory somewhere else scans it and reports what is waiting to
-  be adopted, and `list` always scans: an empty list next to a full `.minecraft` is
-  never acceptable output.
+- Pointing the game directory somewhere else adopts what is on disk, and `list` does
+  the same before listing: every version directory with a version document becomes an
+  instance, named after the directory, files untouched, and said out loud. An empty
+  list next to a full `.minecraft` is never acceptable output.
+- A version id that is not in the vanilla manifest is normal (PCL/HMCL profiles are
+  exactly that): say the version file on disk is being used, do not warn about an
+  unknown version.
+- Resolve the account before fetching anything, so a credential that cannot be read
+  fails in the first second rather than after an install.
 - `mcli list` lists registered instances, not the contents of the game directory;
   pointing `minecraft_dir` at a full `.minecraft` registers nothing. When the list is
   empty, in both the folder-is-populated case and the truly-empty case, say which is

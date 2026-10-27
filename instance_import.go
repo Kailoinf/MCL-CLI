@@ -236,6 +236,57 @@ func (a *App) instanceImport(args []string) int {
 	return 0
 }
 
+// adoptUnregistered registers every version directory that is a real version (it has
+// a JSON) and is not an instance yet. Files stay where they are — taking over an
+// install another launcher made must not move anything — and the return value names
+// what was adopted so the caller can say it out loud instead of changing state
+// quietly.
+func (a *App) adoptUnregistered() []string {
+	disk, err := a.scanDisk()
+	if err != nil {
+		return nil
+	}
+	adopted := make([]string, 0, len(disk))
+	for _, d := range disk {
+		if !d.HasJSON {
+			continue
+		}
+		if _, ok := a.Store.GetInstance(d.ID); ok {
+			continue
+		}
+		if err := validateInstanceName(d.ID); err != nil {
+			continue
+		}
+		if _, ok := a.instanceForVersion(d.ID); ok {
+			continue
+		}
+		a.Store.Data.Instances[d.ID] = &store.Instance{
+			Name:      d.ID,
+			Version:   d.ID,
+			CreatedAt: time.Now(),
+		}
+		adopted = append(adopted, d.ID)
+	}
+	if len(adopted) > 0 {
+		if err := a.Store.Save(); err != nil {
+			a.Log.Warnf("%s", err)
+			return nil
+		}
+	}
+	return adopted
+}
+
+// instanceForVersion answers whether some instance already points at this version,
+// which is the other reason not to register it twice.
+func (a *App) instanceForVersion(version string) (*store.Instance, bool) {
+	for _, inst := range a.Store.Data.Instances {
+		if inst.Version == version {
+			return inst, true
+		}
+	}
+	return nil, false
+}
+
 // ---------------------------------------------------------------------------
 // name validation
 

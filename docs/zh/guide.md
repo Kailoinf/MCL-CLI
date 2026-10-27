@@ -54,8 +54,9 @@ mcli instance scan                    # 看有哪些、哪些已登记
 mcli instance import 1.21.4           # 原地接管（--as <名称> 可改名）
 ```
 
-切换目录时（`mcli config set minecraft_dir <路径>`）会顺便把新目录扫一遍，并告诉你还有几个版本没接管，
-所以切完不会让你猜「怎么什么都没了」。
+切换目录时（`mcli config set minecraft_dir <路径>`）会扫一遍并**自动接管**它找到的东西：凡是带版本文档的
+版本目录都会变成同名实例，文件一个不动，每一条接管都会在输出里点名。`mcli list` 列出来之前也会做同样的事，
+所以装满东西的 `.minecraft` 不会显示成一个空的启动器。
 
 ## 服务器
 

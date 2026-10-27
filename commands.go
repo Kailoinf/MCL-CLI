@@ -222,6 +222,17 @@ func (a *App) cmdList(args []string) int {
 	return 0
 }
 
+// hasLocalVersion reports whether this build can find the version document on disk,
+// which is how a profile another launcher created is recognised — those ids are not
+// in the vanilla manifest, and that is normal rather than wrong.
+func (a *App) hasLocalVersion(id string) bool {
+	if id == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(a.VersionsDir(), id, id+".json"))
+	return err == nil
+}
+
 func (a *App) instanceDir(name string) string {
 	return filepath.Join(a.VersionsDir(), name)
 }
@@ -500,6 +511,9 @@ func (a *App) rescanGameDirIfSwitched(key string) {
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		a.Log.Printf("%s", i18n.T("cfg.game_dir_no_versions", a.Store.Cfg().MinecraftDir))
 		return
+	}
+	if adopted := a.adoptUnregistered(); len(adopted) > 0 {
+		a.Log.Printf("%s", i18n.T("inst.auto_adopted", len(adopted), strings.Join(adopted, ", ")))
 	}
 	a.reportUnregistered(a.Store.InstanceNames())
 }
