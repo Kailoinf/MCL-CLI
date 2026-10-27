@@ -85,6 +85,21 @@ and what is left. Update it in the same commit as the work.
   outright (`mcserver.AcceptEula`), in `server set --eula` and in `server create
   --eula` (where an existing refusal would have survived the same way). The claim was
   checked against the file, not against the message; the tests pin it.
+* An empty instance list next to a full `.minecraft` used to say only "no instances"
+  and stop there, which is exactly the wrong information for someone who just pointed
+  `minecraft_dir` at an existing install: the "unregistered versions" hint was printed
+  only when at least one instance existed. The empty branch reports them now. Verified:
+  0 instances + 2 version directories on disk → the list names both and the adopt
+  command; `mcli instance import 1.21.4` → the table, with the remaining one still
+  named.
+* Reinstalling the program does not touch `~/.mcl-cli`, so an old layout can survive a
+  new binary. Unknown keys in `refresh.toml`/`session.toml` are reported as what they
+  are — keys this build skipped — and that is now followed by what follows from it:
+  the stored login cannot be used, and mcli will not rewrite an older file by guessing.
+  Reproduced from the shape a user reported (a flat `[tokens]` with `token_salt` and
+  `refresh_token_enc`); the keyed `[tokens.<uuid>]` shape, which is the only one this
+  line of builds ever wrote, stays quiet. Logging in again rewrites the file and the
+  warning goes away.
 * CurseForge is wired for `search` and `add` (`--source curseforge`). Verified here: no
   key means the exact instruction and no request; a wrong key makes a live call to
   api.curseforge.com and comes back `HTTP 403`, which the CLI reports as "the key was

@@ -200,6 +200,12 @@ type Store struct {
 
 	Data *Data
 
+	// CredentialKeysUnreadable is set when refresh.toml or session.toml holds keys
+	// this build does not know. Those two files are credentials, so something
+	// concrete follows from it: whatever login they describe cannot be used until
+	// the file is written again by this build.
+	CredentialKeysUnreadable bool
+
 	// UnknownKeys lists keys found on disk that mcli does not know, so the CLI
 	// can warn about typos instead of ignoring them silently.
 	UnknownKeys []string
@@ -314,6 +320,9 @@ func (s *Store) loadTokens() error {
 			if err != nil {
 				return fmt.Errorf("%s", i18n.T("err.state.parse", s.RefreshPath, err))
 			}
+			if len(unknown) > 0 {
+				s.CredentialKeysUnreadable = true
+			}
 			s.UnknownKeys = append(s.UnknownKeys, labelLeft(s.RefreshPath, unknown)...)
 			if file.Tokens != nil {
 				s.Data.Refresh = file.Tokens
@@ -328,6 +337,9 @@ func (s *Store) loadTokens() error {
 			unknown, err := toml.UnmarshalWithReport(raw, &file)
 			if err != nil {
 				return fmt.Errorf("%s", i18n.T("err.state.parse", s.SessionPath, err))
+			}
+			if len(unknown) > 0 {
+				s.CredentialKeysUnreadable = true
 			}
 			s.UnknownKeys = append(s.UnknownKeys, labelLeft(s.SessionPath, unknown)...)
 			if file.Sessions != nil {

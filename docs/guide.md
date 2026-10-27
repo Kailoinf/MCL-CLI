@@ -40,7 +40,13 @@ second, isolated setup is kept for testing. `mcli config path` prints them.
 
 ## Accounts
 
-Several accounts can be logged in at once. `mcli account list` shows them, `use`
+Several accounts can be logged in at once. Reinstalling the program does not touch your `~/.mcl-cli` directory. If a file there
+was written by a much older layout — a `refresh.toml` mentioning unknown keys — mcli
+says which keys it skipped and that the stored login cannot be used; it never rewrites
+an older file by guessing. Log in again (which rewrites it) or delete
+`~/.mcl-cli/refresh.toml`.
+
+`mcli account list` shows them, `use`
 switches the default, `launch --account <name>` overrides it for one run, and
 `--no-switch` adds an account without changing the default. Credentials are
 encrypted with a key derived from this machine, so the two token files cannot be
@@ -54,6 +60,17 @@ heavy shared parts (libraries, assets, version files) live once in
 `mcli instance copy` clones one; `mcli instance scan` lists every version
 directory on disk, including those another launcher created, and
 `mcli instance import` adopts one in place — files and saves stay where they are.
+
+`mcli list` shows the instances mcli has registered, not everything under the game
+directory: pointing `minecraft_dir` at a full `.minecraft` (an official launcher, PCL,
+HMCL) does not register anything by itself, so the list can look empty next to a
+complete install. It says so when it sees unregistered versions, and adopting one is
+one command:
+
+```sh
+mcli instance scan                    # what is there, and which are registered
+mcli instance import 1.21.4           # adopt in place (--as <name> to rename)
+```
 
 ## Servers
 

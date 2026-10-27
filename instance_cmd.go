@@ -55,6 +55,9 @@ func (a *App) instanceList() int {
 	names := a.Store.InstanceNames()
 	if len(names) == 0 {
 		a.Log.Printf("%s", i18n.T("inst.no_instances"))
+		// An empty list next to a full .minecraft is the confusing case: say what
+		// is there and how to adopt it, instead of looking like nothing was found.
+		a.reportUnregistered(nil)
 		return 0
 	}
 	a.Log.Printf("%s", i18n.T("inst.list_header",

@@ -109,6 +109,9 @@ func newApp(glob *flags) (*App, error) {
 	for _, key := range st.UnknownKeys {
 		log.Warnf("%s", i18n.T("state.unknown_key", key))
 	}
+	if st.CredentialKeysUnreadable {
+		log.Warnf("%s", i18n.T("state.credential_keys_hint"))
+	}
 
 	app := &App{
 		Paths:         p,

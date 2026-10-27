@@ -35,11 +35,24 @@ mcli launch vanilla
 
 ## 账号
 
-可以同时登录多个账号。`mcli account list` 列出它们，`use` 切换默认账号，`launch --account <name>` 在单次运行中覆盖默认账号，`--no-switch` 能在不改变默认账号的前提下添加一个账号。凭据用从本机派生出的密钥加密，因此这两个 token 文件无法在别处解密 —— 而 `state.toml` 始终保持可移植。
+可以同时登录多个账号。重装程序**不会**动 `~/.mcl-cli` 目录。如果那里的文件是很早以前的布局（比如 `refresh.toml` 里出现
+本版本不认识的键），mcli 会说出它跳过了哪些键、并告知已存的登录用不了；它绝不会猜着改写旧文件。重新
+`mcli login` 一次（会重写该文件）或直接删掉 `~/.mcl-cli/refresh.toml` 即可。
+
+`mcli account list` 列出它们，`use` 切换默认账号，`launch --account <name>` 在单次运行中覆盖默认账号，`--no-switch` 能在不改变默认账号的前提下添加一个账号。凭据用从本机派生出的密钥加密，因此这两个 token 文件无法在别处解密 —— 而 `state.toml` 始终保持可移植。
 
 ## 实例
 
 实例是一个具名目录，拥有自己的存档、选项和设置；体积大的共享部分（libraries、assets、版本文件）只在 `~/.minecraft` 中保存一份。`mcli instance set` 修改内存、Java 和启动参数；`mcli instance copy` 克隆一个实例；`mcli instance scan` 列出磁盘上的每一个版本目录，包括其他启动器创建的目录，`mcli instance import` 则原地接管其中一个 —— 文件和存档都留在原处。
+
+`mcli list` 列的是 **mcli 已登记的实例**，不是游戏目录下的全部内容：把 `minecraft_dir` 指向一个装满东西的
+`.minecraft`（官方启动器、PCL、HMCL 装的）本身不会登记任何东西，所以在一个完整安装旁边看到「还没有实例」
+是正常的。列表发现未接管的版本时会明确说出来，接管只要一条命令：
+
+```sh
+mcli instance scan                    # 看有哪些、哪些已登记
+mcli instance import 1.21.4           # 原地接管（--as <名称> 可改名）
+```
 
 ## 服务器
 

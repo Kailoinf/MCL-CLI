@@ -144,6 +144,14 @@ small steps as each piece passes.
   that never ends and it looks like a hang.
 - Do not "fix" a pack, profile or instance by rewriting its paths or ids: refuse and
   say what to run instead (a mismatch that is stated is worth more than a guess).
+- Reinstalling the binary does not clean `~/.mcl-cli`, so an older layout survives: an
+  unknown-key warning from `refresh.toml`/`session.toml` means that login cannot be
+  read. Never migrate it — print what was skipped, say the login is unusable, and name
+  `mcli login` (or deleting the file) as the way out.
+- `mcli list` lists registered instances, not the contents of the game directory;
+  pointing `minecraft_dir` at a full `.minecraft` registers nothing. When the list is
+  empty, in both the folder-is-populated case and the truly-empty case, say which is
+  which and name `mcli instance scan` / `import`.
 - CurseForge needs an API key belonging to the user; without one, name the exact
   command that sets it. A refused key (401/403) is `ErrKeyRejected`, not a network
   error — and the live success path cannot be verified here, so say so instead of
