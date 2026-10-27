@@ -54,6 +54,9 @@ mcli instance scan                    # 看有哪些、哪些已登记
 mcli instance import 1.21.4           # 原地接管（--as <名称> 可改名）
 ```
 
+切换目录时（`mcli config set minecraft_dir <路径>`）会顺便把新目录扫一遍，并告诉你还有几个版本没接管，
+所以切完不会让你猜「怎么什么都没了」。
+
 ## 服务器
 
 ```sh

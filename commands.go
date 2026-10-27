@@ -463,6 +463,7 @@ func (a *App) cmdConfig(args []string) int {
 		}
 		value, _ := a.Store.Cfg().Get(rest[0])
 		a.Log.Printf("%s", i18n.T("cfg.set_ok", rest[0], configValueForDisplay(rest[0], value)))
+		a.rescanGameDirIfSwitched(rest[0])
 		return 0
 	case "unset":
 		if len(rest) == 0 {
@@ -476,10 +477,31 @@ func (a *App) cmdConfig(args []string) int {
 			return a.fatal(err)
 		}
 		a.Log.Printf("%s", i18n.T("cfg.unset_ok", rest[0], value))
+		a.rescanGameDirIfSwitched(rest[0])
 		return 0
 	default:
 		return a.fatal(fmt.Errorf("%s", i18n.T("cli.unknown_command", action)))
 	}
+}
+
+// rescanGameDirIfSwitched looks at the game directory right after it is pointed
+// somewhere else, because that is the moment the question "what is in there?" is
+// asked. Pointing mcli at an existing .minecraft registers nothing by itself, and
+// leaving the person with an empty list and no hint is what this avoids.
+func (a *App) rescanGameDirIfSwitched(key string) {
+	if key != "minecraft_dir" {
+		return
+	}
+	dir := a.VersionsDir()
+	if st, err := os.Stat(a.Store.Cfg().MinecraftDir); err != nil || !st.IsDir() {
+		a.Log.Printf("%s", i18n.T("cfg.game_dir_missing", a.Store.Cfg().MinecraftDir))
+		return
+	}
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		a.Log.Printf("%s", i18n.T("cfg.game_dir_no_versions", a.Store.Cfg().MinecraftDir))
+		return
+	}
+	a.reportUnregistered(a.Store.InstanceNames())
 }
 
 func (a *App) configList() int {

@@ -85,6 +85,22 @@ and what is left. Update it in the same commit as the work.
   outright (`mcserver.AcceptEula`), in `server set --eula` and in `server create
   --eula` (where an existing refusal would have survived the same way). The claim was
   checked against the file, not against the message; the tests pin it.
+* `config set minecraft_dir <path>` scans the directory it was just pointed at and
+  says how many versions are waiting to be adopted — the same report `list` gives —
+  because a switch that registers nothing is indistinguishable from a switch that
+  failed. Verified: a directory with 3 versions → the count and both commands; a
+  directory without `versions/` → said so; a path that does not exist → said mcli will
+  create it; an unrelated key → no scan.
+* refresh.toml written by this build is pinned by a test to the per-account shape
+  (`[tokens.<uuid>]`), including that a record keyed by nothing is not turned into the
+  flat `[tokens]` section the reader rejects — mcli must never warn about a file it
+  wrote itself. The file, as written by this build, reads:
+
+  ```
+  [tokens.0123456789abcdef0123456789abcdef]
+  token_salt = "…"
+  refresh_token_enc = "…"
+  ```
 * An empty instance list next to a full `.minecraft` used to say only "no instances"
   and stop there, which is exactly the wrong information for someone who just pointed
   `minecraft_dir` at an existing install: the "unregistered versions" hint was printed

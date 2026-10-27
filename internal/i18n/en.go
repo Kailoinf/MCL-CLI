@@ -242,6 +242,8 @@ var en = map[string]string{
 	"cfg.desc.curseforge_api_key": "CurseForge API key, needed for that source only (never printed)",
 	"cfg.secret_set":              "set (%d characters, not shown)",
 	"cfg.secret_unset":            "not set",
+	"cfg.game_dir_missing":        "that directory does not exist (%s); mcli will create it on the first install",
+	"cfg.game_dir_no_versions":    "%s has no versions/ directory yet, so there is nothing to adopt",
 	"cfg.current":                 "%s = %s",
 	"cfg.set_ok":                  "%s = %s",
 	"cfg.unset_ok":                "%s reset to default (%s)",

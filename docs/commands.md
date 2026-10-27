@@ -57,5 +57,5 @@ Every command accepts the global options: `--lang <en|zh>`, `--config <path>`,
 | Command | What it does |
 | --- | --- |
 | `mcli java [list \| install <major> [--force] \| which <version>]` | inspect or install Java runtimes |
-| `mcli config [get\|set\|unset\|list\|path]` | read or change settings in `mcli.toml`; a key that is a credential (`curseforge_api_key`) is reported as a length, never as a value |
+| `mcli config [get\|set\|unset\|list\|path]` | read or change settings in `mcli.toml`; a key that is a credential (`curseforge_api_key`) is reported as a length, never as a value; setting `minecraft_dir` scans the new directory and says what is waiting to be adopted |
 | `mcli version`, `mcli help [command]` | version and help |

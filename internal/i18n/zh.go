@@ -242,6 +242,8 @@ var zh = map[string]string{
 	"cfg.desc.curseforge_api_key": "CurseForge 的 API key，只有那个来源需要（永不打印）",
 	"cfg.secret_set":              "已设置（%d 个字符，不显示内容）",
 	"cfg.secret_unset":            "未设置",
+	"cfg.game_dir_missing":        "该目录不存在（%s）；第一次安装时 mcli 会创建它",
+	"cfg.game_dir_no_versions":    "%s 下还没有 versions/ 目录，因此没有可接管的内容",
 	"cfg.current":                 "%s = %s",
 	"cfg.set_ok":                  "%s = %s",
 	"cfg.unset_ok":                "%s 已恢复默认值（%s）",

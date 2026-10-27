@@ -72,6 +72,10 @@ mcli instance scan                    # what is there, and which are registered
 mcli instance import 1.21.4           # adopt in place (--as <name> to rename)
 ```
 
+Switching the directory (`mcli config set minecraft_dir <path>`) scans it right away
+and says how many versions are waiting to be adopted, so a switch never leaves you
+guessing what happened.
+
 ## Servers
 
 ```sh

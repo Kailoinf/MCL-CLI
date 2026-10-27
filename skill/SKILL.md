@@ -148,6 +148,9 @@ small steps as each piece passes.
   unknown-key warning from `refresh.toml`/`session.toml` means that login cannot be
   read. Never migrate it — print what was skipped, say the login is unusable, and name
   `mcli login` (or deleting the file) as the way out.
+- Pointing the game directory somewhere else scans it and reports what is waiting to
+  be adopted, and `list` always scans: an empty list next to a full `.minecraft` is
+  never acceptable output.
 - `mcli list` lists registered instances, not the contents of the game directory;
   pointing `minecraft_dir` at a full `.minecraft` registers nothing. When the list is
   empty, in both the folder-is-populated case and the truly-empty case, say which is

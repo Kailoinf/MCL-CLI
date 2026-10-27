@@ -56,5 +56,5 @@
 | 命令 | 作用 |
 | --- | --- |
 | `mcli java [list \| install <major> [--force] \| which <version>]` | 查看或安装 Java 运行时 |
-| `mcli config [get\|set\|unset\|list\|path]` | 读取或修改 `mcli.toml` 中的设置；属于凭证的键（`curseforge_api_key`）只报告长度，永不显示值 |
+| `mcli config [get\|set\|unset\|list\|path]` | 读取或修改 `mcli.toml` 中的设置；属于凭证的键（`curseforge_api_key`）只报告长度，永不显示值；设置 `minecraft_dir` 会立刻扫新目录并说明有多少待接管 |
 | `mcli version`, `mcli help [command]` | 版本与帮助 |
